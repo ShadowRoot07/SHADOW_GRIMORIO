@@ -3,13 +3,14 @@ from textual.screen import Screen
 from textual.widgets import Input, Log, Header, Footer
 from textual.containers import Container
 from src.api.groq_client import oraculo
-from src.logic.init_profile import ProfileManager # Para obtener el alias real
+from src.database.manager import db
+from src.database.models import Usuario
 from loguru import logger
 
 class ChatScreen(Screen):
     """Interfaz de comunicación sagrada con el Oráculo del Grimorio."""
 
-    # Estilos CSS específicos para la terminal del ZTE (Cyberpunk Dark)
+    # Estilos CSS optimizados para terminal móvil (Cyberpunk Theme)
     CSS = """
     ChatScreen {
         background: #000800;
@@ -45,31 +46,39 @@ class ChatScreen(Screen):
         chat_log = self.query_one("#chat_log")
         chat_input = self.query_one("#chat_input")
         user_input = event.value.strip()
-        
+
         if not user_input:
             return
 
-        # 1. Limpiar el campo y mostrar mensaje del usuario
-        chat_input.value = ""
-        # Podríamos sacar el alias dinámicamente de la DB luego
-        chat_log.write(f"\n[ShadowRoot07]: {user_input}\n", scroll_end=True)
-        
-        # 2. Estado de espera
-        chat_log.write("[SISTEMA]: Consultando las hebras del Oráculo...", scroll_end=True)
-        
+        # 1. Obtener alias real de la base de datos
+        session = db.get_session()
         try:
-            # 3. Llamada al Oráculo (IA) con el filtrado de modelos que ya programamos
-            # Nota: Mañana integraremos aquí el ContextInjector para que use tu DB
+            user = session.query(Usuario).first()
+            alias = user.alias if user else "ShadowRoot07"
+        except Exception:
+            alias = "ShadowRoot07"
+        finally:
+            session.close()
+
+        # 2. Limpiar el campo y mostrar mensaje del usuario
+        chat_input.value = ""
+        chat_log.write(f"\n[{alias}]: {user_input}\n", scroll_end=True)
+
+        # 3. Estado de espera visual
+        chat_log.write("[SISTEMA]: Consultando las hebras del Oráculo...", scroll_end=True)
+
+        try:
+            # 4. Llamada al Oráculo (ya incluye el ContextInjector internamente)
             respuesta = await oraculo.consultar(user_input)
-            
-            # 4. Mostrar respuesta de la IA
+
+            # 5. Mostrar respuesta de la IA
             chat_log.write(f"\n[SHADOW_GRIMORIO]: {respuesta}\n", scroll_end=True)
-            
+
         except Exception as e:
             logger.error(f"Fallo en la conexión del chat: {e}")
             chat_log.write("\n[ERROR]: El vínculo con el Oráculo se ha fragmentado.\n")
 
     def action_quit(self) -> None:
-        """Permite volver a la pantalla anterior con 'q'."""
+        """Vuelve a la pantalla anterior con 'q'."""
         self.app.pop_screen()
 
