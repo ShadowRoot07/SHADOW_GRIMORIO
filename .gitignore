@@ -1,0 +1,52 @@
+# === 1. C++ & Compilación (Core) ===
+# Ignoramos los objetos y el resultado de la compilación local
+core/build/*
+*.o
+*.so
+*.a
+*.lib
+*.dll
+*.dylib
+# Archivos temporales de compiladores
+.cache/
+.vscode/
+.idea/
+
+# === 2. Python & Entorno ===
+# Ignoramos el entorno virtual (siempre se recrea con requirements.txt)
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# === 3. Seguridad y Secretos (CRÍTICO) ===
+# NUNCA subas tus llaves de API o enlaces de base de datos
+.env
+.env.local
+.env.*
+secrets.yaml
+# Ignorar tokens de GitHub Actions si los guardas localmente
+.github_token
+
+# === 4. Datos Locales y Logs ===
+# La base de datos local SQLite no debe subirse (cada usuario tiene la suya)
+data/*.db
+data/*.sqlite3
+# Los logs pueden contener info sensible del sistema
+*.log
+logs/
+
+# === 5. Sistema Operativo & Herramientas ===
+# Archivos basura de Android/Termux y otros SO
+.DS_Store
+Thumbs.db
+.directory
+*.tmp
+*.bak
+# Si usas herramientas de profiling o debug
+.pytest_cache/
+.mypy_cache/
+
+.env
