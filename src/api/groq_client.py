@@ -53,7 +53,8 @@ class GroqOraculo:
                 {"role": "system", "content": contexto_sistema},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.6
+            "temperature": 0.4, # Bajamos la temperatura para que sea más preciso y menos "disperso"
+            "max_tokens": 4096   # Forzamos un límite de salida más alto
         }
 
         reintentos = 0
