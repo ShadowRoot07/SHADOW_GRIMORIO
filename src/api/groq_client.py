@@ -1,10 +1,11 @@
 import aiohttp
+import asyncio
 from loguru import logger
 from src.logic.config import config
 
 class GroqOraculo:
-    """Cliente inteligente para Groq con auto-filtrado de modelos."""
-
+    """Cliente robusto con manejo de errores 4xx y pausas asíncronas."""
+    
     BASE_URL = "https://api.groq.com/openai/v1"
 
     def __init__(self):
@@ -13,37 +14,37 @@ class GroqOraculo:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        self.modelos_prohibidos = set()
 
     async def obtener_modelos_disponibles(self):
-        """Algoritmo de filtrado para evitar errores 403/404."""
+        """Filtra modelos activos y evita los que han dado error 403."""
         url = f"{self.BASE_URL}/models"
+        await asyncio.sleep(config.groq_cooldown)
+
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers) as resp:
+                async with session.get(url, headers=self.headers, timeout=config.groq_timeout) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        # Filtramos modelos activos (evitamos previews inestables)
-                        modelos = [m['id'] for m in data['data'] if "preview" not in m['id']]
-                        logger.info(f"Modelos detectados: {len(modelos)}")
-                        return modelos
-                    else:
-                        logger.error(f"Error al listar modelos: {resp.status}")
-                        return ["llama3-8b-8192"] # Fallback seguro
+                        modelos = [
+                            m['id'] for m in data['data']
+                            if "preview" not in m['id'] and m['id'] not in self.modelos_prohibidos
+                        ]
+                        return modelos if modelos else [config.groq_model]
+                    return [config.groq_model]
             except Exception as e:
-                logger.error(f"Fallo de red: {e}")
-                return ["llama3-8b-8192"]
+                logger.error(f"Error de red: {e}")
+                return [config.groq_model]
 
-    async def consultar(self, prompt: str):
-        """Envía el prompt al mejor modelo disponible con el contexto dinámico del usuario."""
-        # Importación local para evitar importaciones circulares entre módulos
-        from src.logic.context_injector import ContextInjector 
+    async def consultar(self, prompt: str, agente_id: str = None):
+        """Consulta al Oráculo con soporte para identidades específicas."""
+        from src.logic.context_injector import ContextInjector
 
         modelos = await self.obtener_modelos_disponibles()
-        # Selecciona el modelo del .env si está disponible, si no, el primero de la lista
         modelo_activo = config.groq_model if config.groq_model in modelos else modelos[0]
-
-        # Inyectamos la sabiduría de la base de datos (ShadowRoot07's profile)
-        contexto_sistema = ContextInjector.obtener_contexto_completo()
+        
+        # Inyectamos el contexto pasando el ID del agente
+        contexto_sistema = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
 
         url = f"{self.BASE_URL}/chat/completions"
         payload = {
@@ -52,24 +53,31 @@ class GroqOraculo:
                 {"role": "system", "content": contexto_sistema},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.6 
+            "temperature": 0.6
         }
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, json=payload, headers=self.headers) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data['choices'][0]['message']['content']
-                    elif resp.status == 413:
-                        return "ERROR: El pergamino (prompt) es demasiado largo para la IA."
-                    else:
-                        logger.error(f"Error de API Groq: {resp.status}")
-                        return f"ERROR CRÍTICO: El Oráculo responde con código {resp.status}"
-            except Exception as e:
-                logger.error(f"Error de conexión en consulta: {e}")
-                return "ERROR: No se pudo establecer conexión con el Oráculo."
+        reintentos = 0
+        while reintentos < config.groq_retry_limit:
+            await asyncio.sleep(config.groq_cooldown * (reintentos + 1))
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(url, json=payload, headers=self.headers, timeout=config.groq_timeout) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            return data['choices'][0]['message']['content']
+                        elif resp.status == 429:
+                            reintentos += 1
+                            await asyncio.sleep(2**reintentos)
+                            continue
+                        elif resp.status == 403:
+                            self.modelos_prohibidos.add(modelo_activo)
+                            return "ERROR: Acceso denegado (403). Cambiando de modelo..."
+                        else:
+                            return f"ERROR: Código {resp.status} de Groq."
+                except Exception as e:
+                    logger.error(f"Fallo de conexión: {e}")
+                    return f"ERROR de conexión: {e}"
+        return "Se agotaron los reintentos tras bloqueos del Oráculo."
 
-# Instancia global para ser usada por la TUI
 oraculo = GroqOraculo()
 

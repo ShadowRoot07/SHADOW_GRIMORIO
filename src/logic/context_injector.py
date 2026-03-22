@@ -1,42 +1,56 @@
+import os
 from src.database.manager import db
 from src.database.models import Usuario, Conocimiento
+from src.logic.identity_matrix import AGENT_IDENTITIES
 from loguru import logger
 
 class ContextInjector:
-    """Extrae la sabiduría del usuario para guiar al Oráculo."""
+    """Motor de contexto: Une el perfil del usuario, la identidad del agente y el sistema de archivos."""
 
     @staticmethod
-    def obtener_contexto_completo() -> str:
+    def leer_archivo_proyecto(ruta_relativa: str) -> str:
+        """Lee un archivo del proyecto para que el Agente pueda analizarlo."""
+        try:
+            # Limpiamos la ruta por si viene con basura
+            ruta_limpia = ruta_relativa.strip().replace("`", "")
+            if os.path.exists(ruta_limpia) and os.path.isfile(ruta_limpia):
+                with open(ruta_limpia, "r", encoding="utf-8") as f:
+                    contenido = f.read()
+                    return f"\n--- CONTENIDO DEL ARCHIVO ({ruta_limpia}) ---\n{contenido}\n--- FIN DEL ARCHIVO ---\n"
+            return f"\n[!] Advertencia: No se pudo leer el archivo '{ruta_limpia}'."
+        except Exception as e:
+            return f"\n[!] Error al acceder al sistema de archivos: {e}"
+
+    @staticmethod
+    def obtener_contexto_completo(agente_id: str = None, query_usuario: str = "") -> str:
         session = db.get_session()
         try:
-            # 1. Obtener datos del usuario
+            # 1. Datos del Usuario (ShadowRoot07)
             user = session.query(Usuario).first()
             alias = user.alias if user else "ShadowRoot07"
-            rango = user.rango if user else "Iniciado"
+            
+            # 2. Construcción del Prompt Base
+            prompt = f"ERES EL SHADOW_GRIMORIO, EL ENJAMBRE IA DE {alias.upper()}.\n"
 
-            # 2. Obtener conocimientos (filtrar los dominados)
-            conocimientos = session.query(Conocimiento).all()
-            dominados = [c.tecnologia for c in conocimientos if c.dominado]
-            aprendiendo = [c.tecnologia for c in conocimientos if not c.dominado]
+            # 3. IDENTIDAD DEL AGENTE
+            if agente_id and agente_id.upper() in AGENT_IDENTITIES:
+                identidad = AGENT_IDENTITIES[agente_id.upper()]
+                prompt += f"\n[ROL ACTIVO: {agente_id}]\n"
+                prompt += f"PERSONALIDAD: {identidad['prompt']}\n"
+                prompt += f"RASGO: {identidad['trait']}\n"
 
-            # 3. Construir el System Prompt dinámico
-            prompt = f"ERES EL SHADOW_GRIMORIO, LA IA DE {alias.upper()}.\n"
-            prompt += f"ESTADO DEL USUARIO: {rango}.\n"
-            prompt += f"CONOCIMIENTOS ACTUALES: {', '.join(dominados) if dominados else 'Iniciando camino'}.\n"
-            
-            if aprendiendo:
-                prompt += f"TECNOLOGÍAS EN APRENDIZAJE: {', '.join(aprendiendo)}.\n"
-            
-            prompt += "\nDIRECTRICES DE RESPUESTA:\n"
-            prompt += "- Sé conciso y usa un tono Cyberpunk/Técnico.\n"
-            prompt += "- No expliques conceptos básicos de las tecnologías que ya domina.\n"
-            prompt += "- Si el usuario pregunta por algo que está aprendiendo, sé más didáctico.\n"
-            prompt += "- Habla siempre en español."
-            
+            # 4. INYECCIÓN DE ARCHIVOS (Detección inteligente)
+            # Si la pregunta contiene una ruta que existe, la inyectamos automáticamente
+            for palabra in query_usuario.split():
+                if "/" in palabra or "." in palabra: # Probable ruta de archivo
+                    if os.path.exists(palabra.strip("., ")):
+                        prompt += ContextInjector.leer_archivo_proyecto(palabra.strip("., "))
+
+            prompt += "\nDIRECTRICES:\n- Tono Cyberpunk/Técnico.\n- Habla siempre en español."
             return prompt
         except Exception as e:
-            logger.error(f"Error al inyectar contexto: {e}")
-            return "Eres el SHADOW_GRIMORIO. El usuario es un programador experto."
+            logger.error(f"Error en ContextInjector: {e}")
+            return "Eres el SHADOW_GRIMORIO. El usuario es ShadowRoot07."
         finally:
             session.close()
 

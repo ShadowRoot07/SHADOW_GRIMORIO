@@ -1,20 +1,21 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.database.models import Base
-from src.logic.config import config # El que creamos con Pydantic
+from src.logic.config import config
 from loguru import logger
 
 class DatabaseManager:
     """Orquestador de persistencia Local/Remota."""
 
     def __init__(self):
-        # Prioridad: 1. URL de Neon.tech | 2. SQLite Local
         self.db_url = str(config.database_url)
-        
+
         try:
             self.engine = create_engine(self.db_url)
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
             logger.info(f"Conexión establecida con el Oráculo de Datos.")
+            # Intentar crear tablas al iniciar por seguridad
+            self.init_db()
         except Exception as e:
             logger.error(f"Error crítico de conexión: {e}")
             raise

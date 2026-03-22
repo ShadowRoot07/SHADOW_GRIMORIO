@@ -2,15 +2,35 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
 class Settings(BaseSettings):
-    # Definimos las mismas variables del .env
-    shadow_alias: str = "Shadow"
-    groq_api_key: SecretStr
-    database_url: str = "sqlite:///./data/shadow_local.db"
-    github_token: SecretStr
+    # --- Identidad y Core ---
+    shadow_alias: str = "ShadowRoot07"
+    shadow_env: str = "development"
     
-    # Configuración para leer el archivo .env
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # --- API Keys y Seguridad ---
+    groq_api_key: SecretStr
+    github_token: SecretStr
+    encryption_key: SecretStr  # Detectada en el error
+    
+    # --- Rutas y Base de Datos ---
+    database_url: str = "sqlite:///./data/shadow_local.db"
+    sounds_path: str = "./assets/sounds"  # Detectada en el error
+    
+    # --- Integración ---
+    github_username: str = "ShadowRoot07" # Detectada en el error
 
-# Instancia global para usar en todo el proyecto
+    # --- Parámetros de Cortesía (IA) ---
+    groq_model: str = "llama3-8b-8192"
+    groq_timeout: int = 30
+    groq_retry_limit: int = 3
+    groq_cooldown: float = 0.5
+
+    # Configuración del motor de Pydantic
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"  # <-- ESTA ES LA CLAVE: Ignora lo que no esté aquí arriba
+    )
+
+# Instancia global
 config = Settings()
 
