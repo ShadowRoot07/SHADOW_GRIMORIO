@@ -1,60 +1,56 @@
-import os
-from pathlib import Path
+import base64
+import httpx
 from loguru import logger
+from src.logic.config import config
+from pathlib import Path
 
 class GitHubSync:
-    """Generador de Workflows para delegar poder a la nube."""
-
+    """Gestiona el respaldo de la base de datos y config en GitHub."""
+    
     def __init__(self):
-        self.workflow_path = Path(".github/workflows")
-        # Aseguramos que la carpeta de rituales de nube exista
-        self.workflow_path.mkdir(parents=True, exist_ok=True)
+        self.token = config.github_token.get_secret_value()
+        self.repo = f"{config.github_username}/SHADOW_BACKUP"
+        self.headers = {
+            "Authorization": f"token {self.token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
 
-    def generar_workflow_compilacion(self, nombre_binario: str):
-        """Crea un YAML para compilar C++ en servidores de GitHub."""
+    async def respaldar_archivo(self, ruta_archivo: str):
+        """Sube un archivo a GitHub usando la API de contenidos."""
+        path = Path(ruta_archivo)
+        if not path.exists():
+            logger.error(f"⚠️ Archivo no encontrado para respaldo: {ruta_archivo}")
+            return
+
+        url = f"https://api.github.com/repos/{self.repo}/contents/backups/{path.name}"
         
-        yaml_content = f"""name: Compilacion de Alto Rendimiento - {nombre_binario}
+        # 1. Obtener el SHA si el archivo ya existe (para actualizarlo)
+        sha = None
+        async with httpx.AsyncClient() as client:
+            res = await client.get(url, headers=self.headers)
+            if res.status_code == 200:
+                sha = res.json().get("sha")
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+            # 2. Leer y codificar contenido
+            with open(path, "rb") as f:
+                content = base64.b64encode(f.read()).decode()
 
-jobs:
-  build_native:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Descargando Código del Grimorio
-        uses: actions/checkout@v4
+            # 3. Payload del Commit
+            data = {
+                "message": f"🤖 SHADOW_SYNC: Respaldo automático {path.name}",
+                "content": content,
+                "branch": "main"
+            }
+            if sha:
+                data["sha"] = sha
 
-      - name: Instalando Compiladores de Élite
-        run: sudo apt-get update && sudo apt-get install -y clang make
+            # 4. Push a GitHub
+            put_res = await client.put(url, headers=self.headers, json=data)
+            
+            if put_res.status_code in [200, 201]:
+                logger.success(f"☁️ [SYNC]: {path.name} respaldado en la nube con éxito.")
+            else:
+                logger.error(f"❌ [SYNC]: Error al subir {path.name}: {put_res.text}")
 
-      - name: Forjando Binario en la Nube
-        run: |
-          cd core
-          make clean
-          make
-          
-      - name: Preservar Artefacto
-        uses: actions/upload-artifact@v4
-        with:
-          name: {nombre_binario}-bin
-          path: src/utils/*.so
-"""
-        
-        file_name = f"build_{nombre_binario}.yml"
-        full_path = self.workflow_path / file_name
-        
-        try:
-            with open(full_path, "w") as f:
-                f.write(yaml_content)
-            logger.success(f"📜 [GITHUB_SYNC]: Pergamino '{file_name}' redactado con éxito.")
-            return True
-        except Exception as e:
-            logger.error(f"❌ [GITHUB_SYNC]: Error al escribir el pergamino: {e}")
-            return False
-
-# Instancia del Sincronizador
-gh_sync = GitHubSync()
+sync_manager = GitHubSync()
 

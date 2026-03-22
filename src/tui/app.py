@@ -1,57 +1,110 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, Label
-from textual.containers import Center, Middle
+from textual.widgets import Footer, Static, Label
+from textual.containers import Container, Vertical, Center, Middle
 from src.utils.ascii_loader import ASCIILoader
-from src.logic.init_profile import ProfileManager
-from src.tui.init_wizard import InitWizard
-from src.tui.agents_menu import AgentsMenu
-from src.utils.hardware_bridge import hw
-import asyncio
-
-class SplashScreen(Static):
-    def on_mount(self) -> None:
-        self.update(f"[bold green]{ASCIILoader.get_art('splash')}[/bold green]")
+from src.logic.config import config
+from src.tui.themes import THEMES
+from src.tui.widgets import TelemetryBar
+from src.logic.github_sync import sync_manager
+import os
 
 class ShadowGrimorio(App):
-    """Orquestador persistente."""
-    CSS = """
-    Screen { background: #000800; align: center middle; }
-    #status { margin-top: 1; text-align: center; width: 100%; }
-    """
+    """Orquestador persistente con soporte de temas y cifrado."""
 
     BINDINGS = [
-        ("q", "quit", "Desconectar TUI"), # Solo cierra la interfaz
-        ("g", "agentes", "Gestionar Agentes"),
-        ("a", "ajustes", "Ajustes")
+        ("q", "quit", "Salir"),
+        ("g", "agentes", "Agentes"),
+        ("c", "chat", "Oráculo"),
+        ("t", "next_theme", "Tema")
     ]
 
+    def __init__(self):
+        super().__init__()
+        self.nombre_tema = config.shadow_theme
+        self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
+        self.cipher = config.get_cipher()
+
+    def get_css(self) -> str:
+        t = self.tema
+        return f"""
+        Screen {{ background: {t['bg']}; align: center middle; }}
+        
+        TelemetryBar {{
+            dock: top;
+            height: 1;
+            background: {t['bg']};
+            color: {t['primary']};
+            text-align: center;
+            border-bottom: solid {t['primary']};
+        }}
+
+        #main_layout {{
+            width: 100%;
+            height: 1fr;
+            align: center middle;
+        }}
+
+        #logo {{
+            width: 100%;
+            content-align: center middle;
+            color: {t['primary']};
+            margin-bottom: 1;
+        }}
+
+        #status {{
+            width: 100%;
+            text-align: center;
+            color: {t['accent']};
+            text-style: bold;
+        }}
+
+        Footer {{ background: {t['secondary']}; color: {t['text']}; }}
+        """
+
     def compose(self) -> ComposeResult:
-        yield Header()
-        with Center():
-            with Middle():
-                yield SplashScreen(id="logo")
-                yield Label("[ INICIALIZANDO PROTOCOLO... ]", id="status")
+        yield TelemetryBar()
+        with Container(id="main_layout"):
+            with Vertical():
+                with Center():
+                    # Usamos expand=False para que el logo no intente ocupar más de lo que debe
+                    yield Static(ASCIILoader.get_art('splash'), id="logo", expand=False)
+                yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
 
-    async def on_mount(self) -> None:
-        if ProfileManager.es_primera_vez():
-            self.push_screen(InitWizard())
-        else:
-            await self.animacion_inicio()
-
-    async def animacion_inicio(self) -> None:
-        status = self.query_one("#status")
-        await asyncio.sleep(0.5)
-        specs = hw.obtener_specs()
-        status.update(f"[bold green]NÚCLEO ONLINE: {specs['cores']} CORES ACTIVOS[/bold green]")
-        await asyncio.sleep(0.5)
-        status.update("[bold cyan]TUI LISTA. LOS AGENTES OPERAN EN LAS SOMBRAS.[/bold cyan]")
+    def action_chat(self) -> None:
+        from src.tui.chat import ChatScreen
+        self.push_screen(ChatScreen())
 
     def action_agentes(self) -> None:
+        from src.tui.agents_menu import AgentsMenu
         self.push_screen(AgentsMenu())
 
-    def action_quit(self) -> None:
-        """Cierra la interfaz pero no mata a los agentes daemonizados."""
+    def action_next_theme(self) -> None:
+        temas = list(THEMES.keys())
+        idx = (temas.index(self.nombre_tema) + 1) % len(temas)
+        self.nombre_tema = temas[idx]
+        self.tema = THEMES[self.nombre_tema]
+        config.guardar_tema(self.nombre_tema)
+        self.refresh()
+        self.notify(f"Matriz Visual: {self.nombre_tema}")
+
+    async def action_quit(self) -> None:
+        if not self.cipher:
+            self.exit()
+            return
+        self.notify("🛡️ Cifrando botín...")
+        archivos_criticos = ["data/shadow_local.db", "config.yaml", ".env"]
+        for ruta in archivos_criticos:
+            if os.path.exists(ruta):
+                try:
+                    with open(ruta, "rb") as f: datos = f.read()
+                    datos_cifrados = self.cipher.encrypt(datos)
+                    ruta_tmp = f"{ruta}.shadow"
+                    with open(ruta_tmp, "wb") as f: f.write(datos_cifrados)
+                    await sync_manager.respaldar_archivo(ruta_tmp)
+                    os.remove(ruta_tmp)
+                except Exception as e:
+                    self.notify(f"Error en {ruta}: {str(e)}", severity="error")
         self.exit()
 
 if __name__ == "__main__":
