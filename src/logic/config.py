@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     github_username: str = "ShadowRoot07"
 
     # --- Parámetros de Cortesía (IA) ---
-    groq_model: str = "llama3-8b-8192"
+    groq_model: str = "llama3-70b-8192"
     groq_timeout: int = 30
     groq_cooldown: int = 2
     groq_retry_limit: int = 3
