@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import json
 from loguru import logger
 from src.logic.config import config
 
@@ -19,8 +20,7 @@ class GroqOraculo:
     async def obtener_modelos_disponibles(self):
         """Filtra modelos activos y evita los que han dado error 403."""
         url = f"{self.BASE_URL}/models"
-        # Usamos un sleep pequeño para no saturar la API al inicio
-        await asyncio.sleep(0.5) 
+        await asyncio.sleep(0.5)
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -44,56 +44,70 @@ class GroqOraculo:
         modelos = await self.obtener_modelos_disponibles()
         modelo_activo = config.groq_model if config.groq_model in modelos else modelos[0]
 
-        # Inyectamos el contexto
-        contexto_sistema = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
-
-        # --- FIX: VALIDACIÓN PARA EVITAR ERROR 400 ---
-        if not contexto_sistema:
-            contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes operando desde una terminal."
+        # 1. Obtener y Limpiar Contexto
+        contexto_raw = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
+        
+        # --- FIX SEGURIDAD 400: Asegurar que el contexto sea un string limpio ---
+        if not contexto_raw or not isinstance(contexto_raw, str):
+            contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes en Termux."
+        else:
+            # Limpiamos posibles espacios en blanco excesivos que rompen el JSON
+            contexto_sistema = contexto_raw.strip()
 
         url = f"{self.BASE_URL}/chat/completions"
+        
+        # 2. Construcción del Payload con validación
         payload = {
-            "model": modelo_activo,
+            "model": str(modelo_activo),
             "messages": [
                 {"role": "system", "content": contexto_sistema},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": str(prompt)}
             ],
-            "temperature": 0.4,
-            "max_tokens": 1024 
+            "temperature": 0.3, # Bajamos a 0.3 para mayor precisión en el Arquitecto
+            "max_tokens": 2048   # Aumentamos para que el código no salga cortado
         }
 
         reintentos = 0
         while reintentos < config.groq_retry_limit:
-            # Incrementamos la espera en cada reintento
             await asyncio.sleep(config.groq_cooldown * (reintentos + 1))
-            
+
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(url, json=payload, headers=self.headers, timeout=config.groq_timeout) as resp:
+                    # Usamos json.dumps para asegurar un formateo correcto
+                    async with session.post(
+                        url, 
+                        data=json.dumps(payload), 
+                        headers=self.headers, 
+                        timeout=config.groq_timeout
+                    ) as resp:
+                        
                         if resp.status == 200:
                             data = await resp.json()
                             return data['choices'][0]['message']['content']
-                        
+
+                        elif resp.status == 400:
+                            error_data = await resp.text()
+                            logger.error(f"⚠️ Error 400 (Bad Request): {error_data}")
+                            return f"ERROR: Estructura de mensaje inválida (400). Detalle: {error_data[:50]}"
+
                         elif resp.status == 429:
-                            logger.warning(f"⚠️ Rate limit en Groq. Reintento {reintentos+1}...")
+                            logger.warning(f"⚠️ Rate limit. Reintento {reintentos+1}...")
                             reintentos += 1
                             continue
-                        
+
                         elif resp.status == 403:
                             self.modelos_prohibidos.add(modelo_activo)
-                            logger.error(f"🚫 Acceso denegado con {modelo_activo}. Cambiando...")
-                            return "ERROR: Acceso denegado (403). Intenta de nuevo para cambiar de modelo."
-                        
+                            return "ERROR: Acceso denegado (403). Cambiando de modelo..."
+
                         else:
                             error_msg = await resp.text()
-                            logger.error(f"❌ Error {resp.status}: {error_msg}")
                             return f"ERROR: Código {resp.status} de Groq."
-                            
+
                 except Exception as e:
                     logger.error(f"Fallo de conexión: {e}")
                     reintentos += 1
-                    
-        return "Se agotaron los reintentos tras bloqueos del Oráculo."
+
+        return "Se agotaron los reintentos."
 
 oraculo = GroqOraculo()
 
