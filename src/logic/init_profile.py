@@ -8,49 +8,78 @@ from loguru import logger
 class ProfileManager:
     @staticmethod
     def es_primera_vez():
-        # Mantenemos tu lógica de DB
+        """Verifica si el sistema necesita una inicialización completa."""
         session = db.get_session()
         try:
-            existe = session.query(Usuario).first()
-            # Si no hay usuario O no hay archivo .env, es primera vez
-            return existe is None or not Path(".env").exists()
+            user_exists = session.query(Usuario).first()
+            # Es primera vez si no hay usuario en DB o si falta la Master Key en .env
+            env_exists = Path(".env").exists()
+            
+            # Verificación extra: ¿el .env tiene contenido real?
+            tiene_key = False
+            if env_exists:
+                with open(".env", "r") as f:
+                    tiene_key = "ENCRYPTION_KEY" in f.read()
+
+            return user_exists is None or not tiene_key
+        except Exception as e:
+            logger.error(f"⚠️ Error verificando estado del núcleo: {e}")
+            return True # Por seguridad, asumimos que falta configurar
         finally:
             session.close()
 
     @staticmethod
     def generar_llave_maestra():
-        """Genera y asegura la ENCRYPTION_KEY en el archivo .env."""
+        """Genera y asegura la ENCRYPTION_KEY sin corromper el .env."""
         env_path = Path(".env")
         nueva_llave = Fernet.generate_key().decode()
-        
+
         if not env_path.exists():
-            with open(env_path, "w") as f:
+            with open(env_path, "w", encoding="utf-8") as f:
                 f.write(f"ENCRYPTION_KEY={nueva_llave}\n")
                 f.write("SHADOW_THEME=CYBERPUNK\n")
             logger.success("🔐 [SECURITY]: Master Key generada en nuevo .env")
         else:
-            with open(env_path, "r") as f:
-                contenido = f.read()
-            if "ENCRYPTION_KEY" not in contenido:
-                with open(env_path, "a") as f:
-                    f.write(f"\nENCRYPTION_KEY={nueva_llave}")
-                logger.success("🔐 [SECURITY]: Master Key inyectada en .env existente.")
+            with open(env_path, "r", encoding="utf-8") as f:
+                lineas = f.readlines()
+            
+            # Verificamos si ya existe para no duplicar
+            tiene_key = any("ENCRYPTION_KEY" in line for line in lineas)
+            
+            if not tiene_key:
+                # Aseguramos que haya un salto de línea antes de añadir
+                with open(env_path, "a", encoding="utf-8") as f:
+                    # Si la última línea no tiene salto de línea, lo agregamos
+                    f.write("\n" + f"ENCRYPTION_KEY={nueva_llave}\n")
+                logger.success("🔐 [SECURITY]: Master Key inyectada con éxito.")
 
     @staticmethod
     def registrar_usuario(alias, lenguajes_iniciales):
-        # ... (Tu lógica original de registro de usuario se mantiene exactamente igual)
+        """Registra al usuario y su arsenal tecnológico inicial."""
         session = db.get_session()
         try:
+            # Evitar duplicados si se llama por error dos veces
+            if session.query(Usuario).filter_by(alias=alias).first():
+                logger.info(f"ℹ️ El perfil de {alias} ya está registrado.")
+                return
+
             nuevo_user = Usuario(alias=alias, rango="Iniciado de Sombras")
             session.add(nuevo_user)
+            
+            # Inyectamos conocimientos base (tu stack actual)
             for tech in lenguajes_iniciales:
-                conocimiento = Conocimiento(tecnologia=tech, dominado=True, nivel=80)
+                conocimiento = Conocimiento(
+                    tecnologia=tech.strip(), 
+                    dominado=True, 
+                    nivel=80
+                )
                 session.add(conocimiento)
+                
             session.commit()
-            logger.success(f"Perfil de {alias} sincronizado con el núcleo.")
+            logger.success(f"⚡ [CORE]: Perfil de {alias} sellado en la base de datos.")
         except Exception as e:
             session.rollback()
-            logger.error(f"Error al sellar el perfil: {e}")
+            logger.error(f"❌ Error al sellar el perfil: {e}")
         finally:
             session.close()
 

@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static, Label
-from textual.containers import Container, Vertical, Center, Middle
+from textual.containers import Container, Vertical, Center
 from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
@@ -9,65 +9,51 @@ from src.logic.github_sync import sync_manager
 import os
 
 class ShadowGrimorio(App):
-    """Orquestador persistente con soporte de temas y cifrado."""
-
+    """Orquestador persistente con soporte de temas reactivos y cifrado."""
+    
     BINDINGS = [
         ("q", "quit", "Salir"),
         ("g", "agentes", "Agentes"),
         ("c", "chat", "Oráculo"),
-        ("t", "next_theme", "Tema")
+        ("t", "next_theme", "Tema"),
+        ("m", "main_menu", "Matriz")
     ]
 
     def __init__(self):
         super().__init__()
-        self.nombre_tema = config.shadow_theme
+        # Sincronizamos con la configuración persistente
+        self.nombre_tema = config.shadow_theme 
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.cipher = config.get_cipher()
 
-    def get_css(self) -> str:
+    def on_mount(self) -> None:
+        """Configuración inicial al montar la app."""
+        self.title = "SHADOW_GRIMORIO"
+        self.sub_title = f"v3.13 | {config.shadow_alias}"
+        self.aplicar_estilos_tema()
+
+    def aplicar_estilos_tema(self) -> None:
+        """Inyecta los colores del tema actual directamente en el DOM de Textual."""
         t = self.tema
-        return f"""
-        Screen {{ background: {t['bg']}; align: center middle; }}
+        # Actualizamos el fondo de la pantalla principal
+        self.screen.styles.background = t['bg']
         
-        TelemetryBar {{
-            dock: top;
-            height: 1;
-            background: {t['bg']};
-            color: {t['primary']};
-            text-align: center;
-            border-bottom: solid {t['primary']};
-        }}
-
-        #main_layout {{
-            width: 100%;
-            height: 1fr;
-            align: center middle;
-        }}
-
-        #logo {{
-            width: 100%;
-            content-align: center middle;
-            color: {t['primary']};
-            margin-bottom: 1;
-        }}
-
-        #status {{
-            width: 100%;
-            text-align: center;
-            color: {t['accent']};
-            text-style: bold;
-        }}
-
-        Footer {{ background: {t['secondary']}; color: {t['text']}; }}
-        """
+        # Intentamos actualizar los estilos de los widgets si ya existen
+        try:
+            self.query_one("TelemetryBar").styles.color = t['primary']
+            self.query_one("TelemetryBar").styles.border_bottom = ("solid", t['primary'])
+            self.query_one("#logo").styles.color = t['primary']
+            self.query_one("#status").styles.color = t['accent']
+        except:
+            pass # Los widgets aún no se han compuesto
 
     def compose(self) -> ComposeResult:
         yield TelemetryBar()
         with Container(id="main_layout"):
             with Vertical():
                 with Center():
-                    # Usamos expand=False para que el logo no intente ocupar más de lo que debe
-                    yield Static(ASCIILoader.get_art('splash'), id="logo", expand=False)
+                    # El splash cargado desde assets/ascii
+                    yield Static(ASCIILoader.get_art('splash'), id="logo")
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
 
@@ -80,31 +66,56 @@ class ShadowGrimorio(App):
         self.push_screen(AgentsMenu())
 
     def action_next_theme(self) -> None:
+        """Cicla entre los temas disponibles y actualiza la UI al instante."""
         temas = list(THEMES.keys())
         idx = (temas.index(self.nombre_tema) + 1) % len(temas)
         self.nombre_tema = temas[idx]
         self.tema = THEMES[self.nombre_tema]
+        
+        # Persistimos el cambio en el objeto config
         config.guardar_tema(self.nombre_tema)
-        self.refresh()
-        self.notify(f"Matriz Visual: {self.nombre_tema}")
+        
+        # Aplicamos el cambio visual sin reiniciar
+        self.aplicar_estilos_tema()
+        self.notify(f"Matriz Visual: {self.nombre_tema}", title="SISTEMA")
+
+    def action_main_menu(self) -> None:
+        from src.tui.main_menu import MainMenuScreen
+        self.push_screen(MainMenuScreen())
+
 
     async def action_quit(self) -> None:
+        """Protocolo de cierre con respaldo cifrado en la nube."""
         if not self.cipher:
             self.exit()
             return
-        self.notify("🛡️ Cifrando botín...")
+
+        self.notify("🛡️ Cifrando botín y sincronizando...", severity="information")
+        
+        # Archivos que ShadowRoot07 considera vitales
         archivos_criticos = ["data/shadow_local.db", "config.yaml", ".env"]
+        
         for ruta in archivos_criticos:
             if os.path.exists(ruta):
                 try:
-                    with open(ruta, "rb") as f: datos = f.read()
+                    with open(ruta, "rb") as f:
+                        datos = f.read()
+                    
+                    # Cifrado con la Master Key del .env
                     datos_cifrados = self.cipher.encrypt(datos)
                     ruta_tmp = f"{ruta}.shadow"
-                    with open(ruta_tmp, "wb") as f: f.write(datos_cifrados)
+                    
+                    with open(ruta_tmp, "wb") as f:
+                        f.write(datos_cifrados)
+                    
+                    # Subida asíncrona a GitHub
                     await sync_manager.respaldar_archivo(ruta_tmp)
-                    os.remove(ruta_tmp)
+                    
+                    if os.path.exists(ruta_tmp):
+                        os.remove(ruta_tmp)
                 except Exception as e:
-                    self.notify(f"Error en {ruta}: {str(e)}", severity="error")
+                    self.notify(f"Fallo en backup {ruta}: {str(e)}", severity="error")
+        
         self.exit()
 
 if __name__ == "__main__":

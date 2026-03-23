@@ -1,7 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr
+from pydantic import SecretStr, Field
 from cryptography.fernet import Fernet
 from loguru import logger
+from pathlib import Path
 
 class Settings(BaseSettings):
     # --- Identidad y Core ---
@@ -9,10 +10,10 @@ class Settings(BaseSettings):
     shadow_env: str = "development"
     shadow_theme: str = "CYBERPUNK"
 
-    # --- API Keys y Seguridad ---
-    groq_api_key: SecretStr
-    github_token: SecretStr
-    encryption_key: str = "" # Cambiado a str para manejo de errores manual
+    # --- API Keys y Seguridad (Mapeo explícito) ---
+    groq_api_key: SecretStr = Field(alias="GROQ_API_KEY")
+    github_token: SecretStr = Field(alias="GITHUB_TOKEN")
+    encryption_key: str = Field(default="", alias="ENCRYPTION_KEY")
 
     # --- Rutas y Base de Datos ---
     database_url: str = "sqlite:///./data/shadow_local.db"
@@ -24,15 +25,17 @@ class Settings(BaseSettings):
     # --- Parámetros de Cortesía (IA) ---
     groq_model: str = "llama3-8b-8192"
     groq_timeout: int = 30
+    groq_cooldown: int = 2
+    groq_retry_limit: int = 3
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
+        case_sensitive=False # Para evitar errores de mayúsculas en el .env
     )
 
     def get_cipher(self):
-        """Retorna el objeto Fernet de forma segura. Si falla, retorna None."""
         try:
             if not self.encryption_key:
                 return None
@@ -42,7 +45,9 @@ class Settings(BaseSettings):
             return None
 
     def guardar_tema(self, nuevo_tema: str):
+        """Actualiza el tema en memoria y persiste si es necesario."""
         self.shadow_theme = nuevo_tema
+        # Opcional: Escribir de vuelta al .env o DB aquí
 
 config = Settings()
 
