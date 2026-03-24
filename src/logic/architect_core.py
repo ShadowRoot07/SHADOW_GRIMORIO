@@ -1,62 +1,73 @@
 import os
 import json
+from pathlib import Path
 from loguru import logger
 
 class ArchitectCore:
-    """El ejecutor material de las estructuras de archivos."""
+    def __init__(self):
+        current_file = Path(__file__).resolve()
+        # src/logic/architect_core.py -> src/logic/ -> src/ -> SHADOW_GRIMORIO/
+        self.project_root = current_file.parents[2]
+        logger.info(f"🏗️ Base del Grimorio: {self.project_root}")
 
-    def __init__(self, base_path=None):
-        # Por seguridad, operamos relativo a la raíz del proyecto o una carpeta 'workspace'
-        self.base_path = base_path or os.getcwd()
-
-    def procesar_instruccion(self, raw_response: str):
-        """
-        Parsea la respuesta del Oráculo. 
-        Busca un bloque JSON para extraer la estructura de archivos.
-        """
+    def procesar_instruccion(self, raw_response: str, cwd_usuario: str = None):
         try:
-            # Intentamos extraer el JSON si la IA puso texto alrededor
             inicio = raw_response.find("{")
             fin = raw_response.rfind("}") + 1
             if inicio == -1 or fin == 0:
-                return {"status": "error", "message": "No se detectó estructura de construcción."}
-            
+                return {"status": "error", "message": "No se detectó estructura JSON."}
+
             data = json.loads(raw_response[inicio:fin])
-            return self.construir(data)
+            target_path = Path(cwd_usuario) if cwd_usuario else self.project_root
+
+            if "patches" in data:
+                return self.aplicar_parches(data["patches"], target_path)
+            return self.construir(data, target_path)
+
         except Exception as e:
-            logger.error(f"Error al parsear plano del Arquitecto: {e}")
+            logger.error(f"Error en ArchitectCore: {e}")
             return {"status": "error", "message": str(e)}
 
-    def construir(self, plano: dict):
-        """Crea las carpetas y archivos definidos en el plano."""
+    def construir(self, plano: dict, target_path: Path):
         resumen = []
         try:
-            # 1. Crear directorios
             for folder in plano.get("folders", []):
-                path = os.path.join(self.base_path, folder)
-                os.makedirs(path, exist_ok=True)
+                path = target_path / folder.lstrip("/")
+                path.mkdir(parents=True, exist_ok=True)
                 resumen.append(f"📁 Dir: {folder}")
 
-            # 2. Crear archivos
             for file_info in plano.get("files", []):
-                file_path = os.path.join(self.base_path, file_info["path"])
-                
-                # Asegurar que el directorio padre exista
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                
+                file_path = target_path / file_info["path"].lstrip("/")
+                file_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(file_info["content"])
                 resumen.append(f"📄 File: {file_info['path']}")
 
-            return {
-                "status": "success", 
-                "details": resumen, 
-                "description": plano.get("description", "Construcción finalizada.")
-            }
+            return {"status": "success", "details": resumen}
         except Exception as e:
-            logger.error(f"Fallo en la construcción: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"Error de escritura: {e}"}
 
-# Instancia global
+    def aplicar_parches(self, patches: list, target_path: Path):
+        resumen = []
+        try:
+            for p in patches:
+                file_path = target_path / p["path"].lstrip("/")
+                if not file_path.exists():
+                    resumen.append(f"❌ No existe: {p['path']}")
+                    continue
+
+                contenido = file_path.read_text(encoding="utf-8")
+                if p["search"] in contenido:
+                    nuevo_contenido = contenido.replace(p["search"], p["replace"])
+                    file_path.write_text(nuevo_contenido, encoding="utf-8")
+                    resumen.append(f"🩹 Patched: {p['path']}")
+                else:
+                    resumen.append(f"⚠️ No hallado: {p['path']}")
+
+            return {"status": "success", "details": resumen}
+        except Exception as e:
+            return {"status": "error", "message": f"Fallo en parche: {e}"}
+
+# --- ESTA LÍNEA ES LA QUE EVITA EL ERROR DE IMPORTACIÓN ---
 architect = ArchitectCore()
 

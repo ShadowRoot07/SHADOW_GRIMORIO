@@ -1,0 +1,1 @@
+print('Shadow Grimorio vive')

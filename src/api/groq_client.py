@@ -64,6 +64,9 @@ class GroqOraculo:
         # 1. Obtener y Limpiar Contexto
         contexto_raw = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
 
+        print(f"\n[DEBUG_API] Enviando prompt con contexto de {len(contexto_raw)} bytes...")
+        logger.debug(f"Modelo: {modelo_activo} | Agente: {agente_id}")
+
         # --- FIX SEGURIDAD: Asegurar que el contexto sea un string limpio ---
         if not contexto_raw or not isinstance(contexto_raw, str):
             contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes en Termux."

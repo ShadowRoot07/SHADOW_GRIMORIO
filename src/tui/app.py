@@ -83,6 +83,10 @@ class ShadowGrimorio(App):
         from src.tui.main_menu import MainMenuScreen
         self.push_screen(MainMenuScreen())
 
+    def on_error(self, event):
+        """Captura errores de la TUI y los manda a la terminal de logs."""
+        logger.error(f"TUI ERROR: {event.error}")
+        print(f"❌ Fallo en la interfaz: {event.error}")
 
     async def action_quit(self) -> None:
         """Protocolo de cierre con respaldo cifrado en la nube."""
