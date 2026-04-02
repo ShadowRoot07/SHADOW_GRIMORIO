@@ -6,7 +6,6 @@ from src.logic.agent_manager import manager
 from src.tui.widgets import TelemetryBar
 
 class AgentRow(ListItem):
-    """Fila de agente optimizada para visibilidad en ZTE."""
     def __init__(self, agent_name: str, status: str):
         super().__init__()
         self.agent_name = agent_name
@@ -15,11 +14,10 @@ class AgentRow(ListItem):
     def compose(self) -> ComposeResult:
         with Horizontal():
             yield Label(f" 📡 {self.agent_name.upper()}", classes="name_tag")
-            # ID generado correctamente como f-string
             yield Switch(value=self.is_on, id=f"sw_{self.agent_name}")
 
 class AgentsMenu(Screen):
-    # CSS Refinado: Se eliminaron ambigüedades en align y se usaron variables de tema
+    # CSS Obligatorio para que no se vea desordenado en el ZTE
     CSS = """
     #menu_container {
         border: tall $primary;
@@ -30,34 +28,28 @@ class AgentsMenu(Screen):
         width: 100%;
         text-align: center;
         color: $accent;
-        background: $surface;
-        text-style: bold;
+        padding: 1;
     }
     AgentRow {
         height: 3;
-        margin: 0 1;
         border-bottom: solid $secondary;
-        background: $surface;
-    }
-    AgentRow > Horizontal {
-        align: center middle;
-        width: 100%;
-        height: 100%;
     }
     .name_tag {
         width: 1fr;
-        color: $accent;
-        text-style: bold;
+        margin-top: 1;
         margin-left: 1;
     }
     Switch {
-        dock: right;
         margin-right: 1;
     }
     """
 
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Volver"),
+        ("q", "quit", "Salir")
+    ]
+
     def on_mount(self) -> None:
-        """Sincroniza el fondo con el tema actual al entrar."""
         t = self.app.tema
         self.styles.background = t['bg']
         self.actualizar_lista()
@@ -70,47 +62,26 @@ class AgentsMenu(Screen):
         yield Footer()
 
     def actualizar_lista(self) -> None:
-        """Puebla la lista basándose en el sistema de archivos real."""
         try:
             lista = self.query_one("#agents_list", ListView)
             lista.clear()
-            
             manager.descubrir_agentes()
             agentes = manager.listar_agentes()
-
-            if not agentes:
-                self.notify("Matriz vacía: Sin scripts en /agents", severity="error")
-                return
-
             for name, status in agentes.items():
                 lista.append(AgentRow(name, status))
         except Exception as e:
-            self.notify(f"Error de escaneo: {e}", severity="error")
+            self.notify(f"Error: {e}", severity="error")
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
-        """Controlador de energía con prevención de bucles."""
-        # Evitamos procesar IDs que no nos pertenecen
         if not event.switch.id or not event.switch.id.startswith("sw_"):
             return
-
         agent_name = event.switch.id.replace("sw_", "")
-        
         if event.value:
-            # Intentar encender
-            exito = manager.encender_agente(agent_name)
-            if exito:
-                self.notify(f"AGENTE {agent_name} ONLINE", title="SISTEMA")
+            if not manager.encender_agente(agent_name):
+                event.switch.value = False
             else:
-                self.notify(f"FALLO AL DESPERTAR {agent_name}", severity="error")
-                # Bloqueamos el evento para evitar recursión al resetear
-                event.stop()
-                event.switch.value = False 
+                self.notify(f"AGENTE {agent_name} ONLINE")
         else:
-            # Intentar apagar
-            if manager.apagar_agente(agent_name):
-                self.notify(f"AGENTE {agent_name} EN SLEEP", title="SISTEMA")
-
-    def action_quit(self) -> None:
-        """Vuelve a la pantalla principal."""
-        self.app.pop_screen()
+            manager.apagar_agente(agent_name)
+            self.notify(f"AGENTE {agent_name} EN SLEEP")
 
