@@ -20,7 +20,7 @@ class ShadowGrimorio(App):
         super().__init__()
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
-        # Inicialización garantizada del buffer
+        # Buffer de respuesta inicializado como string vacío
         self.last_oraculo_response = ""
 
     def on_mount(self) -> None:
@@ -51,7 +51,7 @@ class ShadowGrimorio(App):
     def action_main_menu(self) -> None:
         from src.tui.main_menu import MainMenuScreen
         self.push_screen(MainMenuScreen())
-    
+
     def action_agentes(self) -> None:
         from src.tui.agents_menu import AgentsMenu
         self.push_screen(AgentsMenu())

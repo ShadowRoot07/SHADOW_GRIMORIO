@@ -17,18 +17,36 @@ class ContextInjector:
     @staticmethod
     def obtener_mapa_lexico() -> str:
         """Lee el índice de funciones y clases generado por el agente LEXICON."""
-        index_path = Path("logs/lexicon_index.json")
+        # Usamos ruta absoluta para evitar fallos desde diferentes pantallas
+        base_path = Path(__file__).resolve().parents[2]
+        index_path = base_path / "logs" / "lexicon_index.json"
+        
         if index_path.exists():
             try:
                 with open(index_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    # Resumimos para no saturar tokens (solo nombres de archivos y lo que contienen)
-                    resumen = []
-                    for file, items in data.items():
-                        resumen.append(f"{file}: {', '.join(items)}")
-                    return "\n".join(resumen)[:1000] # Límite de 1k caracteres
+                
+                resumen = ["[ESTRUCTURA_PROYECTO_ACTUAL]"]
+                for file, items in data.items():
+                    resumen.append(f"- {file}: {', '.join(items)}")
+                
+                # Límite de 1500 caracteres es el 'sweet spot' para Llama 3 8B en móvil
+                return "\n".join(resumen)[:1500] 
+            except Exception as e:
+                logger.warning(f"Error leyendo Lexicon: {e}")
+        return "No hay mapa léxico disponible aún. Ejecuta el agente LEXICON_INDEXER."
+
+    @staticmethod
+    def obtener_ultimos_logs(n: int = 5) -> str:
+        """Extrae las últimas líneas de actividad para contexto situacional."""
+        log_path = Path("logs/daemon_survival.log")
+        if log_path.exists():
+            try:
+                with open(log_path, "r") as f:
+                    lines = f.readlines()
+                    return "".join(lines[-n:])
             except: pass
-        return "No hay mapa léxico disponible aún."
+        return "Sin eventos recientes."
 
     @staticmethod
     def obtener_contexto_completo(agente_id: str = None, query_usuario: str = "") -> str:
@@ -37,48 +55,46 @@ class ContextInjector:
             user = session.query(Usuario).first()
             alias = user.alias if user else "ShadowRoot07"
 
-            # 1. MAPA LÉXICO (Máxima prioridad: Al inicio del todo)
-            # Esto le dice a la IA qué archivos existen antes de definir su personalidad.
-            prompt = f"### [MEMORIA_LOCAL_DE_ARCHIVOS] ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"
+            # 1. CONOCIMIENTO LOCAL (Lexicon)
+            prompt = f"### CONOCIMIENTO_LOCAL ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"
 
-            # 2. NÚCLEO DE PERSONALIDAD
+            # 2. PERSONALIDAD Y ENTORNO
             prompt += (
                 "### SISTEMA OPERATIVO: SHADOW_GRIMORIO ###\n"
-                "- IDIOMA: ESPAÑOL (ESTRICTO).\n"
-                "- MODO: Cyberpunk, pragmático, sombra.\n"
-                "- ACCESO: Tienes permiso para leer la estructura de archivos mencionada arriba.\n\n"
+                f"- USUARIO: {alias.upper()}\n"
+                "- IDIOMA: ESPAÑOL (ESTRICTO)\n"
+                "- HARDWARE: ZTE Blade A54 (Termux)\n\n"
             )
 
             # 3. IDENTIDAD DINÁMICA
             if agente_id and agente_id.upper() in AGENT_IDENTITIES:
                 info = AGENT_IDENTITIES[agente_id.upper()]
-                prompt += f"[AGENTE ACTIVO: {agente_id.upper()}]\n"
-                prompt += f"ROL: {info.get('prompt', 'Asistente de ejecución.')}\n"
-                prompt += f"RASGO: {info.get('trait', 'Eficiencia pura.')}\n\n"
+                prompt += f"[MODO_AGENTE: {agente_id.upper()}]\n"
+                prompt += f"OBJETIVO: {info.get('prompt', 'Asistente técnico.')}\n\n"
             else:
-                prompt += f"ERES EL NÚCLEO CENTRAL DEL ENJAMBRE DE {alias.upper()}.\n\n"
+                prompt += "ERES EL NÚCLEO CENTRAL. Gestiona el enjambre de agentes con precisión.\n\n"
 
-            # 4. GHOST_SHELL (LECTURA DINÁMICA)
-            # Mantenemos tu lógica de split() que es muy eficiente en móvil
+            # 4. GHOST_SHELL (Lectura de archivos mencionados en el chat)
             for palabra in query_usuario.split():
                 if "/" in palabra or "." in palabra:
                     path_candidato = palabra.strip("., \"'`")
                     p = Path(path_candidato)
                     if p.exists() and p.is_file():
-                        if p.stat().st_size < 2048:
-                            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                                prompt += f"\n[CONTENIDO_DE_ARCHIVO: {p.name}]\n{f.read()}\n"
-                        else:
-                            prompt += f"\n[AVISO: {p.name} excedió los 2KB y no fue inyectado]\n"
+                        # Límite de seguridad para no explotar la memoria del ZTE
+                        if p.stat().st_size < 4096:
+                            try:
+                                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                                    prompt += f"\n[CONTENIDO_ARCHIVO: {p.name}]\n{f.read()}\n"
+                            except: pass
 
-            # 5. TELEMETRÍA (Final del prompt para contexto reciente)
-            prompt += f"\n--- ÚLTIMOS_EVENTOS_DEL_SISTEMA ---\n{ContextInjector.obtener_ultimos_logs(5)}"
+            # 5. ESTADO DEL HARDWARE (Vía Logs de Survival)
+            prompt += f"\n### ESTADO_SISTEMA ###\n{ContextInjector.obtener_ultimos_logs(3)}"
 
             return ContextInjector.filtrar_privacidad(prompt)
 
         except Exception as e:
-            logger.error(f"Fallo crítico en Inyector: {e}")
-            return "CONTEXTO_DAÑADO: Responde solo en español."
+            logger.error(f"Fallo en Inyector: {e}")
+            return "ERROR_CONTEXTO: Responde como núcleo Shadow Grimorio."
         finally:
             session.close()
 

@@ -10,20 +10,23 @@ class Settings(BaseSettings):
     shadow_env: str = "development"
     shadow_theme: str = "CYBERPUNK"
 
-    # --- API Keys y Seguridad (Mapeo explícito) ---
+    # --- API Keys y Seguridad ---
     groq_api_key: SecretStr = Field(alias="GROQ_API_KEY")
     github_token: SecretStr = Field(alias="GITHUB_TOKEN")
     encryption_key: str = Field(default="", alias="ENCRYPTION_KEY")
 
-    # --- Rutas y Base de Datos ---
+    # --- Rutas ---
     database_url: str = "sqlite:///./data/shadow_local.db"
     sounds_path: str = "./assets/sounds"
+    # Ruta al índice para que otros módulos lo encuentren fácil
+    lexicon_path: Path = Path("./logs/lexicon_index.json")
 
     # --- Integración ---
     github_username: str = "ShadowRoot07"
 
     # --- Parámetros de Cortesía (IA) ---
-    groq_model: str = "llama3-70b-8192"
+    # FIX: Cambiado a Llama 3.3 (El 3-70b-8192 ya no existe en Groq)
+    groq_model: str = "llama-3.3-70b-versatile"
     groq_timeout: int = 30
     groq_cooldown: int = 2
     groq_retry_limit: int = 3
@@ -32,22 +35,16 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        case_sensitive=False # Para evitar errores de mayúsculas en el .env
+        case_sensitive=False
     )
 
     def get_cipher(self):
         try:
-            if not self.encryption_key:
-                return None
+            if not self.encryption_key: return None
             return Fernet(self.encryption_key.encode())
         except Exception as e:
             logger.error(f"⚠️ [CIFRADO]: Llave maestra inválida: {e}")
             return None
-
-    def guardar_tema(self, nuevo_tema: str):
-        """Actualiza el tema en memoria y persiste si es necesario."""
-        self.shadow_theme = nuevo_tema
-        # Opcional: Escribir de vuelta al .env o DB aquí
 
 config = Settings()
 
