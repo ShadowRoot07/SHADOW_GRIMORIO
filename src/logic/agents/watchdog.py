@@ -107,7 +107,7 @@ def run():
                 json.dump(status_update, f, indent=2)
 
             print(f"[OK] Ciclo completado. Archivos revisados: {archivos_vistos} ({time.strftime('%H:%M:%S')})")
-            time.sleep(4)
+            time.sleep(10)
 
     except KeyboardInterrupt:
         notificar("Watchdog desactivado por ShadowRoot07.")
