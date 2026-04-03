@@ -3,6 +3,7 @@ import sys
 import json
 import signal
 import subprocess
+import atexit
 from pathlib import Path
 from typing import Dict, Optional, Any
 from loguru import logger
@@ -25,9 +26,11 @@ class AgentManager:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.descubrir_agentes()
         self._cargar_estado_previo()
+        
+        # Registrar limpieza automática al salir del script principal
+        atexit.register(self.matar_todo)
 
     def descubrir_agentes(self) -> None:
-        """Escanea el directorio de agentes para identificar scripts disponibles."""
         self.agentes_activos = {}
         for file in self.plugins_path.glob("*.py"):
             if file.name != "__init__.py":
@@ -40,7 +43,6 @@ class AgentManager:
         except: pass
 
     def _cargar_estado_previo(self) -> None:
-        """Verifica si los agentes que estaban 'on' siguen vivos en el sistema."""
         if not self.state_file.exists(): return
         try:
             with self.state_file.open("r", encoding="utf-8") as f:
@@ -48,7 +50,6 @@ class AgentManager:
             for nombre, info in datos.items():
                 if nombre in self.agentes_activos and info.get("pid"):
                     try:
-                        # Signal 0 no mata, solo verifica si el proceso existe
                         os.kill(info["pid"], 0)
                         self.agentes_activos[nombre] = info
                     except (ProcessLookupError, OSError):
@@ -57,24 +58,27 @@ class AgentManager:
         except: pass
 
     def encender_agente(self, nombre: str) -> bool:
-        """Lanza un agente en segundo plano con redirección de logs."""
         if nombre not in self.agentes_activos: return False
-        
-        # Evitar duplicados
-        if self.agentes_activos[nombre]["status"] == "on":
+
+        # Si ya existe un PID registrado, lo matamos antes de duplicar
+        info_actual = self.agentes_activos[nombre]
+        if info_actual["pid"]:
             self.apagar_agente(nombre)
 
         script_path = self.plugins_path / f"{nombre}.py"
         log_path = self.logs_dir / f"daemon_{nombre}.log"
-        
+
         try:
+            # Abrir log en modo append y asegurar que se cierre tras Popen
             log_file = open(log_path, "a", encoding="utf-8")
             process = subprocess.Popen(
                 [sys.executable, str(script_path)],
                 stdout=log_file, stderr=log_file,
-                start_new_session=True, # Lo independiza de la TUI
+                start_new_session=True, 
                 cwd=str(self.project_root)
             )
+            log_file.close() # Popen mantiene el file descriptor abierto internamente
+
             if process.pid:
                 self.agentes_activos[nombre] = {"pid": process.pid, "status": "on"}
                 self._guardar_estado()
@@ -88,25 +92,39 @@ class AgentManager:
     def apagar_agente(self, nombre: str) -> bool:
         info = self.agentes_activos.get(nombre)
         if not info or not info["pid"]: return False
+        
+        pid = info["pid"]
         try:
-            os.kill(info["pid"], signal.SIGTERM)
+            # Intentar cierre elegante
+            os.kill(pid, signal.SIGTERM)
+            # Pequeña espera para que el proceso limpie
             self.agentes_activos[nombre] = {"pid": None, "status": "off"}
             self._guardar_estado()
             return True
-        except:
-            # Forzar cierre si no responde a SIGTERM
+        except ProcessLookupError:
+            self.agentes_activos[nombre] = {"pid": None, "status": "off"}
+            self._guardar_estado()
+            return True
+        except Exception as e:
+            # Forzar cierre (SIGKILL) si lo anterior falla
             try:
-                os.kill(info["pid"], signal.SIGKILL)
+                os.kill(pid, signal.SIGKILL)
                 self.agentes_activos[nombre] = {"pid": None, "status": "off"}
                 self._guardar_estado()
                 return True
             except: return False
 
     def matar_todo(self) -> None:
-        """Purga total de agentes. Útil para protocolos de supervivencia."""
-        for nombre in list(self.agentes_activos.keys()):
-            self.apagar_agente(nombre)
-        logger.warning("💀 PURGA TOTAL: Todos los agentes han sido desactivados.")
+        """Purga total de agentes. Se ejecuta al salir o por emergencia."""
+        activos = [n for n, i in self.agentes_activos.items() if i["pid"]]
+        if activos:
+            logger.warning(f"💀 Ejecutando limpieza de agentes: {', '.join(activos)}")
+            for nombre in activos:
+                self.apagar_agente(nombre)
+
+    def __del__(self):
+        """Asegura que el manager intente matar hijos si el objeto es destruido."""
+        self.matar_todo()
 
     def listar_agentes(self) -> Dict[str, str]:
         return {name: info["status"] for name, info in self.agentes_activos.items()}

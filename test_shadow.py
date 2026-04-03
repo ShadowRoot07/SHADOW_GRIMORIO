@@ -1,1 +1,0 @@
-print('Shadow Grimorio vive')

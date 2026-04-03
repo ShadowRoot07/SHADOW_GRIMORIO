@@ -1,52 +1,117 @@
 import time
 import sys
+import json
 import py_compile
+import tempfile
+import os
 from pathlib import Path
 
-# Anclaje de ruta
-base_path = Path(__file__).resolve().parents[3]
-sys.path.append(str(base_path))
+# --- ANCLAJE DINÁMICO ---
+def buscar_raiz():
+    actual = Path(__file__).resolve()
+    for padre in actual.parents:
+        if (padre / "src").exists():
+            return padre
+    # Fallback: si no encuentra 'src', sube 3 niveles
+    return actual.parents[3]
 
-def notificar(mensaje, es_error=False):
+base_path = buscar_raiz()
+sys.path.append(str(base_path))
+report_file = base_path / "logs" / "watchdog_report.json"
+
+def notificar(mensaje, es_error=False, data=None):
+    """Notifica al TTY y actualiza el reporte JSON."""
     color = "\x1b[1;31m" if es_error else "\x1b[1;34m"
     try:
-        # Notificación directa al TTY para no depender de la UI congelada
         with open('/dev/tty', 'w') as tty:
             tty.write(f"\n{color}[WATCHDOG]:\x1b[0m {mensaje}\n")
-    except: pass
+    except:
+        print(f"\n[WATCHDOG]: {mensaje}")
+
+    if es_error and data:
+        try:
+            report = {
+                "last_check": time.ctime(),
+                "status": "syntax_error",
+                "file": data.get("file"),
+                "error": data.get("error"),
+                "line": data.get("line")
+            }
+            with tempfile.NamedTemporaryFile('w', dir=report_file.parent, delete=False) as tf:
+                json.dump(report, tf, indent=2)
+                temp_name = tf.name
+            Path(temp_name).replace(report_file)
+        except: pass
 
 def run():
-    notificar("Ojo avizor activado. Vigilando sintaxis...")
+    # Asegurar que existan los logs
+    log_dir = base_path / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    notificar(f"INICIANDO VIGILANCIA EN: {base_path.name}")
+    print(f"[DEBUG] Ruta base: {base_path}")
+
+    # Estado inicial
+    with open(report_file, "w") as f:
+        json.dump({"status": "OK", "last_check": time.ctime()}, f)
+
     mtimes = {}
 
-    # Carpetas críticas para vigilar (evita escanear logs, data, etc.)
-    watch_dirs = [base_path / "src", base_path]
+    try:
+        while True:
+            status_update = {"status": "OK", "last_check": time.ctime()}
+            archivos_vistos = 0
 
-    while True:
-        try:
-            for directory in watch_dirs:
-                # Solo buscamos archivos .py en primer y segundo nivel de esas carpetas
-                for py_file in directory.rglob("*.py"):
-                    if any(x in str(py_file) for x in ["__pycache__", "data", "logs", ".git"]):
+            # os.walk es el método más fiable en el sistema de archivos de Android
+            for raiz, carpetas, archivos in os.walk(str(base_path)):
+                # FILTRO CORREGIDO: Eliminamos "data" porque tu ruta de Termux lo contiene
+                if any(x in raiz for x in ["__pycache__", ".git", "venv", "logs"]):
+                    continue
+                
+                # Opcional: print(f"📁 Escaneando: {raiz}") # Descomenta si quieres ver las carpetas
+
+                for nombre_archivo in archivos:
+                    if not nombre_archivo.endswith(".py"):
                         continue
-
+                    
+                    py_file = Path(raiz) / nombre_archivo
+                    archivos_vistos += 1
+                    
+                    # Verificación de cambios y sintaxis
                     try:
                         current_mtime = py_file.stat().st_mtime
-                        if mtimes.get(py_file) != current_mtime:
-                            mtimes[py_file] = current_mtime
-
-                            # Verificación de sintaxis
-                            py_compile.compile(str(py_file), doraise=True)
+                        ruta_str = str(py_file)
+                        
+                        if mtimes.get(ruta_str) != current_mtime:
+                            mtimes[ruta_str] = current_mtime
+                            # py_compile.compile es la forma más rápida de chequear sintaxis
+                            py_compile.compile(ruta_str, doraise=True)
+                            print(f"  ✅ Check: {nombre_archivo}") 
+                    
                     except py_compile.PyCompileError as e:
-                        # Extraer solo la línea del error para brevedad
                         error_lines = str(e).split('\n')
                         msg = error_lines[-2] if len(error_lines) > 1 else "Error de sintaxis."
-                        notificar(f"Sintaxis rota en {py_file.name}: {msg}", es_error=True)
-                    except: pass
+                        
+                        data_err = {
+                            "file": str(py_file.relative_to(base_path)),
+                            "error": msg,
+                            "line": error_lines[1].strip() if len(error_lines) > 1 else "?"
+                        }
+                        notificar(f"¡SINTAXIS ROTA! -> {nombre_archivo}", es_error=True, data=data_err)
+                        status_update = {"status": "syntax_error", **data_err}
+                    except Exception:
+                        continue
 
-            time.sleep(7) # Un poco más de tiempo para ahorrar batería en el ZTE
-        except Exception:
-            time.sleep(15)
+            # Guardar reporte de ciclo
+            with open(report_file, "w") as f:
+                json.dump(status_update, f, indent=2)
+
+            print(f"[OK] Ciclo completado. Archivos revisados: {archivos_vistos} ({time.strftime('%H:%M:%S')})")
+            time.sleep(4)
+
+    except KeyboardInterrupt:
+        notificar("Watchdog desactivado por ShadowRoot07.")
+        sys.exit(0)
 
 if __name__ == "__main__":
     run()
