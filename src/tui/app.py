@@ -4,7 +4,8 @@ from textual.containers import Container, Vertical, Center
 from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
-from src.tui.widgets import TelemetryBar
+from src.tui.widgets import TelemetryBar, WatchdogObserver
+from src.tui.modals import WatchdogErrorModal
 
 class ShadowGrimorio(App):
     BINDINGS = [
@@ -20,7 +21,6 @@ class ShadowGrimorio(App):
         super().__init__()
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
-        # Buffer de respuesta inicializado como string vacío
         self.last_oraculo_response = ""
 
     def on_mount(self) -> None:
@@ -33,12 +33,21 @@ class ShadowGrimorio(App):
 
     def compose(self) -> ComposeResult:
         yield TelemetryBar()
+        # IMPORTANTE: Asignamos ID para que el manejador de eventos lo reconozca
+        yield WatchdogObserver(id="watchdog_observer") 
+        
         with Container(id="main_layout"):
             with Vertical():
                 with Center():
                     yield Static(ASCIILoader.get_art('splash'), id="logo")
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
+
+    # --- MANEJO DE EVENTOS DEL WATCHDOG ---
+    # El nombre debe coincidir con: on + id_del_widget + nombre_del_mensaje
+    def on_watchdog_observer_syntax_error_detected(self, event: WatchdogObserver.SyntaxErrorDetected) -> None:
+        """Captura el error del observador y lanza el modal rojo."""
+        self.push_screen(WatchdogErrorModal(event.data))
 
     def action_back(self) -> None:
         if len(self.screen_stack) > 1:
