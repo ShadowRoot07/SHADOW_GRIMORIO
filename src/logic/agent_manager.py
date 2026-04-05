@@ -8,17 +8,11 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 from loguru import logger
 
-try:
-    from src.logic.architect_core import architect
-except ImportError:
-    architect = None
-
 class AgentManager:
     def __init__(self) -> None:
         self.agentes_activos: Dict[str, Dict[str, Any]] = {}
-        current_file = Path(__file__).resolve()
-        self.project_root = current_file.parents[2]
-
+        # Ruta absoluta garantizada
+        self.project_root = Path(__file__).resolve().parents[2]
         self.plugins_path = self.project_root / "src" / "logic" / "agents"
         self.state_file = self.project_root / "logs" / "agents_state.json"
         self.logs_dir = self.project_root / "logs"
@@ -26,14 +20,14 @@ class AgentManager:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.descubrir_agentes()
         self._cargar_estado_previo()
-        
-        # Registrar limpieza automática al salir del script principal
+
+        # Solo matamos agentes cuando la APP principal se cierra de verdad
         atexit.register(self.matar_todo)
 
     def descubrir_agentes(self) -> None:
-        self.agentes_activos = {}
+        # No reiniciamos el status si ya están encendidos
         for file in self.plugins_path.glob("*.py"):
-            if file.name != "__init__.py":
+            if file.name != "__init__.py" and file.stem not in self.agentes_activos:
                 self.agentes_activos[file.stem] = {"pid": None, "status": "off"}
 
     def _guardar_estado(self) -> None:
@@ -60,25 +54,21 @@ class AgentManager:
     def encender_agente(self, nombre: str) -> bool:
         if nombre not in self.agentes_activos: return False
 
-        # Si ya existe un PID registrado, lo matamos antes de duplicar
-        info_actual = self.agentes_activos[nombre]
-        if info_actual["pid"]:
-            self.apagar_agente(nombre)
-
         script_path = self.plugins_path / f"{nombre}.py"
         log_path = self.logs_dir / f"daemon_{nombre}.log"
 
         try:
-            # Abrir log en modo append y asegurar que se cierre tras Popen
+            # Usamos una sesión nueva para que el hijo sobreviva a refrescos de la TUI
             log_file = open(log_path, "a", encoding="utf-8")
             process = subprocess.Popen(
                 [sys.executable, str(script_path)],
-                stdout=log_file, stderr=log_file,
+                stdout=log_file,
+                stderr=log_file,
                 start_new_session=True, 
-                cwd=str(self.project_root)
+                cwd=str(self.project_root),
+                env={**os.environ, "PYTHONPATH": str(self.project_root)} # Inyectamos la ruta
             )
-            log_file.close() # Popen mantiene el file descriptor abierto internamente
-
+            
             if process.pid:
                 self.agentes_activos[nombre] = {"pid": process.pid, "status": "on"}
                 self._guardar_estado()
@@ -92,49 +82,24 @@ class AgentManager:
     def apagar_agente(self, nombre: str) -> bool:
         info = self.agentes_activos.get(nombre)
         if not info or not info["pid"]: return False
-        
-        pid = info["pid"]
         try:
-            # Intentar cierre elegante
-            os.kill(pid, signal.SIGTERM)
-            # Pequeña espera para que el proceso limpie
-            self.agentes_activos[nombre] = {"pid": None, "status": "off"}
-            self._guardar_estado()
-            return True
-        except ProcessLookupError:
-            self.agentes_activos[nombre] = {"pid": None, "status": "off"}
-            self._guardar_estado()
-            return True
-        except Exception as e:
-            # Forzar cierre (SIGKILL) si lo anterior falla
-            try:
-                os.kill(pid, signal.SIGKILL)
-                self.agentes_activos[nombre] = {"pid": None, "status": "off"}
-                self._guardar_estado()
-                return True
-            except: return False
+            os.kill(info["pid"], signal.SIGTERM)
+        except:
+            try: os.kill(info["pid"], signal.SIGKILL)
+            except: pass
+        
+        self.agentes_activos[nombre] = {"pid": None, "status": "off"}
+        self._guardar_estado()
+        return True
 
     def matar_todo(self) -> None:
-        """Purga total de agentes. Se ejecuta al salir o por emergencia."""
-        activos = [n for n, i in self.agentes_activos.items() if i["pid"]]
-        if activos:
-            logger.warning(f"💀 Ejecutando limpieza de agentes: {', '.join(activos)}")
-            for nombre in activos:
-                self.apagar_agente(nombre)
-
-    def __del__(self):
-        """Asegura que el manager intente matar hijos si el objeto es destruido."""
-        self.matar_todo()
+        """Limpieza real solo al apagar la App."""
+        for nombre in list(self.agentes_activos.keys()):
+            self.apagar_agente(nombre)
 
     def listar_agentes(self) -> Dict[str, str]:
+        self._cargar_estado_previo() # Verificación en tiempo real
         return {name: info["status"] for name, info in self.agentes_activos.items()}
-
-    def ejecutar_plano_arquitecto(self, respuesta_ia: str) -> Dict[str, Any]:
-        if not architect: return {"status": "error", "message": "Arquitecto offline."}
-        try:
-            return architect.procesar_instruccion(respuesta_ia, cwd_usuario=os.getcwd())
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
 
 manager = AgentManager()
 
