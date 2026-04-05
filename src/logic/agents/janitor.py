@@ -1,39 +1,72 @@
 import os
 import shutil
 import sys
+import time
+import json
 from pathlib import Path
 
-# Añadimos el root al path para que el agente encuentre sus módulos si es necesario
-sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+# --- ANCLAJE AL NÚCLEO ---
+def buscar_raiz():
+    actual = Path(__file__).resolve()
+    for padre in actual.parents:
+        if (padre / "src").exists():
+            return padre
+    return actual.parents[3]
+
+raiz = buscar_raiz()
+sys.path.append(str(raiz))
+report_file = raiz / "logs" / "janitor_report.json"
 
 def notificar(mensaje):
-    """Escribe directamente en la terminal activa del usuario."""
     try:
-        with open('/dev/tty', 'w') as tty:
-            tty.write(f"\n\x1b[1;32m[SHADOW_GRIMORIO]:\x1b[0m {mensaje}\n")
-    except:
-        # Si no hay TTY (terminal cerrada totalmente), el mensaje se queda en el log del manager
-        pass
+        with open('/dev/tty', 'w', encoding="utf-8") as tty:
+            tty.write(f"\n\x1b[1;35m[JANITOR]:\x1b[0m {mensaje}\n")
+    except: pass
 
 class JanitorAgent:
     def __init__(self):
-        self.root = Path(__file__).parent.parent.parent.parent
-        self.targets = ["**/__pycache__", "**/*.pyc", "logs/*.log"]
+        self.root = raiz
+        self.objetivos = ["**/__pycache__", "**/*.pyc", "sabotaje.py", "test_error.py", "temp_file.pyc", "trigger.py"]
+
+    def generar_reporte_tui(self, eliminados):
+        if not eliminados: return
+        # El timestamp asegura que la TUI detecte que es un reporte NUEVO
+        report = {
+            "last_purge": str(time.time()), 
+            "count": len(eliminados),
+            "files": sorted(eliminados) # Ordenados para que se vea mejor
+        }
+        try:
+            with open(report_file, "w") as f:
+                json.dump(report, f, indent=2)
+        except: pass
+
+    def limpiar_basura(self):
+        eliminados = []
+        for patron in self.objetivos:
+            for item in self.root.glob(patron):
+                try:
+                    nombre_relativo = item.relative_to(self.root)
+                    if item.is_dir(): shutil.rmtree(item)
+                    else: item.unlink()
+                    eliminados.append(str(nombre_relativo))
+                except: continue
+        return eliminados
 
     def run(self):
-        borrados = 0
-        for pattern in self.targets:
-            for path in self.root.glob(pattern):
-                try:
-                    if path.is_dir(): shutil.rmtree(path)
-                    else: path.unlink()
-                    borrados += 1
-                except: pass
-        
-        notificar(f"Purga completada por el Agente Janitor. {borrados} elementos eliminados.")
+        notificar("Conserje del Grimorio Online. Auditoría activa.")
+        if report_file.exists(): report_file.unlink()
+
+        while True:
+            lista_purgados = self.limpiar_basura()
+            if lista_purgados:
+                notificar(f"Higienización: {len(lista_purgados)} elementos detectados.")
+                self.generar_reporte_tui(lista_purgados)
+
+            time.sleep(10) # Frecuencia de escaneo
 
 if __name__ == "__main__":
-    # El manager ejecutará este archivo directamente
     agent = JanitorAgent()
-    agent.run()
+    try: agent.run()
+    except KeyboardInterrupt: pass
 

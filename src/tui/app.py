@@ -7,9 +7,10 @@ from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.tui.widgets import TelemetryBar
-from src.tui.modals import WatchdogErrorModal
+from src.tui.modals import WatchdogErrorModal, JanitorAuditModal # Importamos el nuevo modal
 
 class ShadowGrimorio(App):
+    # ... (BINDINGS se mantienen igual)
     BINDINGS = [
         ("q", "quit", "Salir"),
         ("g", "agentes", "Agentes"),
@@ -23,19 +24,52 @@ class ShadowGrimorio(App):
         super().__init__()
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
-        
-        # Ruta absoluta calculada desde la raíz
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
-        self.report_path = self.raiz_proyecto / "logs" / "watchdog_report.json"
-        self.last_check_time = ""
+        
+        # Rutas de Reportes
+        self.wd_report = self.raiz_proyecto / "logs" / "watchdog_report.json"
+        self.jn_report = self.raiz_proyecto / "logs" / "janitor_report.json"
+        
+        self.last_wd_time = ""
+        self.last_jn_time = ""
         self.modal_abierto = False
 
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
-        # Escaneo constante cada 2 segundos
-        self.set_interval(2.0, self.check_watchdog)
+        self.set_interval(2.0, self.global_observer)
 
+    def global_observer(self) -> None:
+        """Vigilancia centralizada de reportes de agentes."""
+        if self.modal_abierto: return
+
+        # 1. Chequeo Watchdog (Error Rojo)
+        if self.wd_report.exists():
+            try:
+                with open(self.wd_report, "r") as f: data = json.load(f)
+                if data.get("status") == "syntax_error":
+                    t = data.get("last_check")
+                    if t != self.last_wd_time:
+                        self.last_wd_time = t
+                        self.modal_abierto = True
+                        self.push_screen(WatchdogErrorModal(data), callback=self.on_modal_close)
+            except: pass
+
+        # 2. Chequeo Janitor (Audit Púrpura)
+        if self.jn_report.exists():
+            try:
+                with open(self.jn_report, "r") as f: data = json.load(f)
+                t = data.get("last_purge")
+                if t != self.last_jn_time:
+                    self.last_jn_time = t
+                    self.modal_abierto = True
+                    self.push_screen(JanitorAuditModal(data), callback=self.on_modal_close)
+            except: pass
+
+    def on_modal_close(self, _=None):
+        self.modal_abierto = False
+
+    # ... (Resto de métodos action_ y aplicar_estilos_tema se mantienen igual)
     def aplicar_estilos_tema(self) -> None:
         self.screen.styles.background = self.tema['bg']
 
@@ -47,28 +81,6 @@ class ShadowGrimorio(App):
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
 
-    def check_watchdog(self) -> None:
-        if not self.report_path.exists() or self.modal_abierto:
-            return
-
-        try:
-            with open(self.report_path, "r") as f:
-                data = json.load(f)
-            
-            if data.get("status") == "syntax_error":
-                timestamp = data.get("last_check")
-                if timestamp != self.last_check_time:
-                    self.last_check_time = timestamp
-                    self.modal_abierto = True
-                    self.push_screen(WatchdogErrorModal(data), callback=self.on_modal_close)
-            elif data.get("status") == "OK":
-                self.last_check_time = ""
-        except: pass
-
-    def on_modal_close(self, _=None):
-        self.modal_abierto = False
-
-    # Acciones de navegación...
     def action_chat(self) -> None:
         from src.tui.chat import ChatScreen
         self.push_screen(ChatScreen())

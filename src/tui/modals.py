@@ -98,3 +98,78 @@ class WatchdogErrorModal(ModalScreen):
     #close_wd { width: 100%; border: none; }
     """
 
+
+class JanitorAuditModal(ModalScreen):
+    """Ventana púrpura neón que lista detalladamente los elementos eliminados."""
+
+    def __init__(self, data: dict):
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        files = self.data.get("files", [])
+        count = self.data.get("count", 0)
+
+        with Vertical(id="janitor_modal"):
+            yield Label("🧹 HIGIENIZACIÓN COMPLETADA", id="jn_title")
+            yield Label(f"SE HAN PURGADO [bold #BC13FE]{count}[/] ELEMENTOS", id="jn_subtitle")
+            
+            with ScrollableContainer(id="jn_scroll"):
+                if files:
+                    for f in files:
+                        # Cada archivo con un prefijo de flecha neón
+                        yield Label(f"[#BC13FE]»[/] {f}", classes="file_entry")
+                else:
+                    yield Label("No se detectaron archivos residuales.", id="empty_msg")
+
+            with Grid(id="jn_footer"):
+                yield Button("ENTENDIDO", variant="primary", id="close_jn")
+
+    def on_mount(self) -> None:
+        container = self.query_one("#janitor_modal")
+        # Estética Neón Púrpura Profundo
+        container.styles.border = ("thick", "#BC13FE")
+        container.styles.background = "#0a000f"
+        self.query_one("#jn_title").styles.color = "#E0B0FF"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close_jn":
+            self.app.pop_screen()
+
+    CSS = """
+    #janitor_modal {
+        width: 85%;
+        height: 65%;
+        align: center middle;
+        padding: 1;
+    }
+    #jn_title { text-align: center; text-style: bold; margin-bottom: 0; }
+    #jn_subtitle { 
+        text-align: center; 
+        background: #1a0025; 
+        margin: 1 0; 
+        padding: 0 1; 
+        border-bottom: solid #BC13FE;
+    }
+    #jn_scroll {
+        height: 1fr;
+        border: solid #3c005a;
+        padding: 1;
+        background: #000;
+        scrollbar-gutter: stable;
+    }
+    .file_entry {
+        color: #D8BFD8;
+        margin-bottom: 0;
+        width: 100%;
+    }
+    #empty_msg { color: #555; text-align: center; margin-top: 2; }
+    #jn_footer { grid-size: 1; height: 3; margin-top: 1; }
+    #close_jn { 
+        width: 100%; 
+        background: #BC13FE; 
+        color: white; 
+        text-style: bold;
+        border: none; 
+    }
+    """
