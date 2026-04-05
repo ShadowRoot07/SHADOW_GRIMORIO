@@ -173,3 +173,46 @@ class JanitorAuditModal(ModalScreen):
         border: none; 
     }
     """
+
+
+class GhostWritingModal(ModalScreen):
+    """Ventana Cian Neón para el flujo de escritura del Ghost_Coder."""
+
+    def __init__(self, data: dict):
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        msg = self.data.get("message", "PROCESANDO...")
+        details = self.data.get("details", [])
+
+        with Vertical(id="ghost_modal"):
+            yield Label(f"👻 {msg}", id="gh_title")
+
+            with ScrollableContainer(id="gh_scroll"):
+                for d in details:
+                    yield Label(f"[#00FFFF]>>[/] {d}", classes="gh_entry")
+
+            with Grid(id="gh_footer"):
+                yield Button("CERRAR NEXO", id="close_gh")
+
+    def on_mount(self) -> None:
+        container = self.query_one("#ghost_modal")
+        container.styles.border = ("thick", "#00FFFF")
+        container.styles.background = "#000a0a"
+        self.query_one("#gh_title").styles.color = "#00FFFF"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        # Cierre explícito de la pantalla modal
+        if event.button.id == "close_gh":
+            self.dismiss() # dismiss() es preferible para modales en Textual
+
+    CSS = """
+    #ghost_modal { width: 85%; height: 60%; align: center middle; padding: 1; }
+    #gh_title { text-align: center; text-style: bold; margin-bottom: 1; }
+    #gh_scroll { height: 1fr; border: solid #005555; background: #000; padding: 1; }
+    .gh_entry { color: #AAFFFF; margin-bottom: 0; }
+    #gh_footer { grid-size: 1; height: 3; margin-top: 1; }
+    #close_gh { width: 100%; background: #005555; color: white; border: none; }
+    """
+

@@ -7,10 +7,9 @@ from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.tui.widgets import TelemetryBar
-from src.tui.modals import WatchdogErrorModal, JanitorAuditModal # Importamos el nuevo modal
+from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal
 
 class ShadowGrimorio(App):
-    # ... (BINDINGS se mantienen igual)
     BINDINGS = [
         ("q", "quit", "Salir"),
         ("g", "agentes", "Agentes"),
@@ -25,13 +24,17 @@ class ShadowGrimorio(App):
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
-        
+
         # Rutas de Reportes
         self.wd_report = self.raiz_proyecto / "logs" / "watchdog_report.json"
         self.jn_report = self.raiz_proyecto / "logs" / "janitor_report.json"
-        
+        self.gh_report = self.raiz_proyecto / "logs" / "ghost_report.json"
+
+        # Timestamps para evitar bucles
         self.last_wd_time = ""
         self.last_jn_time = ""
+        self.last_gh_time = ""
+
         self.modal_abierto = False
 
     def on_mount(self) -> None:
@@ -43,33 +46,49 @@ class ShadowGrimorio(App):
         """Vigilancia centralizada de reportes de agentes."""
         if self.modal_abierto: return
 
-        # 1. Chequeo Watchdog (Error Rojo)
+        # 1. Chequeo Watchdog (Rojo)
         if self.wd_report.exists():
             try:
-                with open(self.wd_report, "r") as f: data = json.load(f)
+                with open(self.wd_report, "r") as f: 
+                    data = json.load(f)
                 if data.get("status") == "syntax_error":
-                    t = data.get("last_check")
+                    t = str(data.get("last_check", ""))
                     if t != self.last_wd_time:
                         self.last_wd_time = t
                         self.modal_abierto = True
                         self.push_screen(WatchdogErrorModal(data), callback=self.on_modal_close)
+                        return # Evitar múltiples modales a la vez
             except: pass
 
-        # 2. Chequeo Janitor (Audit Púrpura)
+        # 2. Chequeo Janitor (Púrpura)
         if self.jn_report.exists():
             try:
-                with open(self.jn_report, "r") as f: data = json.load(f)
-                t = data.get("last_purge")
+                with open(self.jn_report, "r") as f: 
+                    data = json.load(f)
+                t = str(data.get("last_purge", ""))
                 if t != self.last_jn_time:
                     self.last_jn_time = t
                     self.modal_abierto = True
                     self.push_screen(JanitorAuditModal(data), callback=self.on_modal_close)
+                    return
+            except: pass
+
+        # 3. Chequeo Ghost_Coder (Cian)
+        if self.gh_report.exists():
+            try:
+                with open(self.gh_report, "r") as f: 
+                    data = json.load(f)
+                # Convertimos a string el timestamp numérico del JSON
+                t = str(data.get("timestamp", ""))
+                if t != self.last_gh_time:
+                    self.last_gh_time = t
+                    self.modal_abierto = True
+                    self.push_screen(GhostWritingModal(data), callback=self.on_modal_close)
             except: pass
 
     def on_modal_close(self, _=None):
         self.modal_abierto = False
 
-    # ... (Resto de métodos action_ y aplicar_estilos_tema se mantienen igual)
     def aplicar_estilos_tema(self) -> None:
         self.screen.styles.background = self.tema['bg']
 
