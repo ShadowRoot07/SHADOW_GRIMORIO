@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static, Label
@@ -31,11 +32,11 @@ class ShadowGrimorio(App):
         self.gh_report = self.raiz_proyecto / "logs" / "ghost_report.json"
         self.br_report = self.raiz_proyecto / "logs" / "bruma_report.json"
 
-        # Timestamps para evitar bucles (TODOS inicializados)
+        # Timestamps
         self.last_wd_time = ""
         self.last_jn_time = ""
         self.last_gh_time = ""
-        self.last_br_time = "" # <--- AQUÍ ESTABA EL FALLO, FALTA ESTA LÍNEA
+        self.last_br_time = ""
 
         self.modal_abierto = False
 
@@ -45,63 +46,48 @@ class ShadowGrimorio(App):
         self.set_interval(2.0, self.global_observer)
 
     def global_observer(self) -> None:
-        """Vigilancia centralizada de reportes de agentes."""
-        if self.modal_abierto: return
+        """Vigilancia centralizada de reportes."""
+        if self.modal_abierto: 
+            return
 
-        # 1. Chequeo Watchdog (Rojo)
-        if self.wd_report.exists():
-            try:
-                with open(self.wd_report, "r") as f:
-                    data = json.load(f)
-                if data.get("status") == "syntax_error":
-                    t = str(data.get("last_check", ""))
-                    if t != self.last_wd_time:
-                        self.last_wd_time = t
-                        self.modal_abierto = True
-                        self.push_screen(WatchdogErrorModal(data), callback=self.on_modal_close)
-                        return 
-            except: pass
-
-        # 2. Chequeo Janitor (Púrpura)
-        if self.jn_report.exists():
-            try:
-                with open(self.jn_report, "r") as f:
-                    data = json.load(f)
-                t = str(data.get("last_purge", ""))
-                if t != self.last_jn_time:
-                    self.last_jn_time = t
-                    self.modal_abierto = True
-                    self.push_screen(JanitorAuditModal(data), callback=self.on_modal_close)
-                    return
-            except: pass
-
-        # 3. Chequeo Ghost_Coder (Cian)
-        if self.gh_report.exists():
-            try:
-                with open(self.gh_report, "r") as f:
-                    data = json.load(f)
-                t = str(data.get("timestamp", ""))
-                if t != self.last_gh_time:
-                    self.last_gh_time = t
-                    self.modal_abierto = True
-                    self.push_screen(GhostWritingModal(data), callback=self.on_modal_close)
-                    return
-            except: pass
-
-        # 4. Chequeo Bruma_Sync (Blanco/Gris)
+        # 4. Chequeo Bruma_Sync (Prioridad en este debug)
         if self.br_report.exists():
             try:
                 with open(self.br_report, "r") as f:
                     data = json.load(f)
                 t = str(data.get("timestamp", ""))
+                
                 if t != self.last_br_time:
                     self.last_br_time = t
                     self.modal_abierto = True
+                    # Empujamos la pantalla y forzamos el callback de cierre
                     self.push_screen(BrumaSyncModal(data), callback=self.on_modal_close)
                     return
-            except: pass
+            except Exception:
+                pass
 
-    def on_modal_close(self, _=None):
+        # 1, 2, 3 (Otros agentes permanecen igual pero con la seguridad de modal_abierto)
+        for report, last_time, modal_cls in [
+            (self.wd_report, "last_wd_time", WatchdogErrorModal),
+            (self.jn_report, "last_jn_time", JanitorAuditModal),
+            (self.gh_report, "last_gh_time", GhostWritingModal),
+        ]:
+            if report.exists():
+                try:
+                    with open(report, "r") as f: data = json.load(f)
+                    # Lógica simplificada para el debug
+                    timestamp_key = "last_check" if "last_check" in data else ("last_purge" if "last_purge" in data else "timestamp")
+                    t = str(data.get(timestamp_key, ""))
+                    
+                    if t != getattr(self, last_time):
+                        setattr(self, last_time, t)
+                        self.modal_abierto = True
+                        self.push_screen(modal_cls(data), callback=self.on_modal_close)
+                        return
+                except: pass
+
+    def on_modal_close(self, _=None) -> None:
+        """Callback agresivo para asegurar que el observer siga trabajando."""
         self.modal_abierto = False
 
     def aplicar_estilos_tema(self) -> None:
@@ -124,7 +110,9 @@ class ShadowGrimorio(App):
         self.push_screen(AgentsMenu())
 
     def action_back(self) -> None:
-        if len(self.screen_stack) > 1: self.pop_screen()
+        if len(self.screen_stack) > 1: 
+            self.pop_screen()
+            self.modal_abierto = False # Reset preventivo
 
     async def action_quit(self) -> None:
         self.exit()
