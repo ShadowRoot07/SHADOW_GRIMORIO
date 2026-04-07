@@ -31,10 +31,11 @@ class ShadowGrimorio(App):
         self.gh_report = self.raiz_proyecto / "logs" / "ghost_report.json"
         self.br_report = self.raiz_proyecto / "logs" / "bruma_report.json"
 
-        # Timestamps para evitar bucles
+        # Timestamps para evitar bucles (TODOS inicializados)
         self.last_wd_time = ""
         self.last_jn_time = ""
         self.last_gh_time = ""
+        self.last_br_time = "" # <--- AQUÍ ESTABA EL FALLO, FALTA ESTA LÍNEA
 
         self.modal_abierto = False
 
@@ -50,7 +51,7 @@ class ShadowGrimorio(App):
         # 1. Chequeo Watchdog (Rojo)
         if self.wd_report.exists():
             try:
-                with open(self.wd_report, "r") as f: 
+                with open(self.wd_report, "r") as f:
                     data = json.load(f)
                 if data.get("status") == "syntax_error":
                     t = str(data.get("last_check", ""))
@@ -58,13 +59,13 @@ class ShadowGrimorio(App):
                         self.last_wd_time = t
                         self.modal_abierto = True
                         self.push_screen(WatchdogErrorModal(data), callback=self.on_modal_close)
-                        return # Evitar múltiples modales a la vez
+                        return 
             except: pass
 
         # 2. Chequeo Janitor (Púrpura)
         if self.jn_report.exists():
             try:
-                with open(self.jn_report, "r") as f: 
+                with open(self.jn_report, "r") as f:
                     data = json.load(f)
                 t = str(data.get("last_purge", ""))
                 if t != self.last_jn_time:
@@ -77,19 +78,21 @@ class ShadowGrimorio(App):
         # 3. Chequeo Ghost_Coder (Cian)
         if self.gh_report.exists():
             try:
-                with open(self.gh_report, "r") as f: 
+                with open(self.gh_report, "r") as f:
                     data = json.load(f)
-                # Convertimos a string el timestamp numérico del JSON
                 t = str(data.get("timestamp", ""))
                 if t != self.last_gh_time:
                     self.last_gh_time = t
                     self.modal_abierto = True
                     self.push_screen(GhostWritingModal(data), callback=self.on_modal_close)
+                    return
             except: pass
 
+        # 4. Chequeo Bruma_Sync (Blanco/Gris)
         if self.br_report.exists():
             try:
-                with open(self.br_report, "r") as f: data = json.load(f)
+                with open(self.br_report, "r") as f:
+                    data = json.load(f)
                 t = str(data.get("timestamp", ""))
                 if t != self.last_br_time:
                     self.last_br_time = t
