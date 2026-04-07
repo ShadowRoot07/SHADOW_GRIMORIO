@@ -216,3 +216,46 @@ class GhostWritingModal(ModalScreen):
     #close_gh { width: 100%; background: #005555; color: white; border: none; }
     """
 
+
+
+class BrumaSyncModal(ModalScreen):
+    """Ventana Gris/Blanco Neblina para el flujo de respaldo de Bruma_Sync."""
+
+    def __init__(self, data: dict):
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        msg = self.data.get("message", "SINCRONIZANDO...")
+        details = self.data.get("details", [])
+
+        with Vertical(id="bruma_modal"):
+            yield Label(f"🌫️ {msg}", id="br_title")
+
+            with ScrollableContainer(id="br_scroll"):
+                for d in details:
+                    yield Label(f"[#FFFFFF]»[/] {d}", classes="br_entry")
+
+            with Grid(id="br_footer"):
+                yield Button("CERRAR NEBLINA", id="close_br")
+
+    def on_mount(self) -> None:
+        container = self.query_one("#bruma_modal")
+        # Estética Vapor/Gris
+        container.styles.border = ("thick", "#E5E4E2")
+        container.styles.background = "#121212"
+        self.query_one("#br_title").styles.color = "#FFFFFF"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close_br":
+            self.dismiss()
+
+    CSS = """
+    #bruma_modal { width: 85%; height: 50%; align: center middle; padding: 1; }
+    #br_title { text-align: center; text-style: bold; margin-bottom: 1; }
+    #br_scroll { height: 1fr; border: solid #444; background: #000; padding: 1; }
+    .br_entry { color: #CCCCCC; margin-bottom: 0; }
+    #br_footer { grid-size: 1; height: 3; margin-top: 1; }
+    #close_br { width: 100%; background: #444; color: white; border: none; }
+    """
+

@@ -7,7 +7,7 @@ from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.tui.widgets import TelemetryBar
-from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal
+from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal, , BrumaSyncModal
 
 class ShadowGrimorio(App):
     BINDINGS = [
@@ -29,6 +29,7 @@ class ShadowGrimorio(App):
         self.wd_report = self.raiz_proyecto / "logs" / "watchdog_report.json"
         self.jn_report = self.raiz_proyecto / "logs" / "janitor_report.json"
         self.gh_report = self.raiz_proyecto / "logs" / "ghost_report.json"
+        self.br_report = self.raiz_proyecto / "logs" / "bruma_report.json"
 
         # Timestamps para evitar bucles
         self.last_wd_time = ""
@@ -84,6 +85,17 @@ class ShadowGrimorio(App):
                     self.last_gh_time = t
                     self.modal_abierto = True
                     self.push_screen(GhostWritingModal(data), callback=self.on_modal_close)
+            except: pass
+
+        if self.br_report.exists():
+            try:
+                with open(self.br_report, "r") as f: data = json.load(f)
+                t = str(data.get("timestamp", ""))
+                if t != self.last_br_time:
+                    self.last_br_time = t
+                    self.modal_abierto = True
+                    self.push_screen(BrumaSyncModal(data), callback=self.on_modal_close)
+                    return
             except: pass
 
     def on_modal_close(self, _=None):
