@@ -6,19 +6,23 @@ from pathlib import Path
 
 # --- CONFIGURACIÓN DE RUTAS ---
 def buscar_raiz():
+    # Aseguramos la ruta absoluta de Termux
     return Path("/data/data/com.termux/files/home/BIG-Projects/SHADOW_GRIMORIO")
 
 raiz = buscar_raiz()
 report_file = raiz / "logs" / "bruma_report.json"
 
 def notificar_tui(estado, mensaje, detalles=None):
+    """Escribe el reporte con un timestamp fresco para forzar la reacción de la TUI."""
     report = {
         "status": estado,
         "message": mensaje,
         "details": detalles or [],
-        "timestamp": time.time()
+        "timestamp": time.time() # Timestamp de alta precisión
     }
     try:
+        # Asegurar que el directorio de logs existe
+        report_file.parent.mkdir(parents=True, exist_ok=True)
         with open(report_file, "w") as f:
             json.dump(report, f, indent=2)
     except Exception as e:
@@ -37,37 +41,39 @@ class BrumaSync:
         print(f"[BRUMA]: Vigilando cambios en {raiz}")
 
     def ejecutar_ciclo(self):
-        # 1. Verificar cambios reales
-        status = subprocess.run(["git", "status", "--porcelain"], 
+        # 1. Verificar cambios reales (incluyendo archivos nuevos no rastreados)
+        status = subprocess.run(["git", "status", "--porcelain"],
                                cwd=raiz, capture_output=True, text=True).stdout
-        
+
         if status.strip():
             print("[BRUMA]: Cambios detectados. Iniciando preservación...")
-            timestamp = time.strftime("%H:%M:%S")
-            
+            timestamp_legible = time.strftime("%H:%M:%S")
+
             # 2. Notificar inicio a la TUI
             notificar_tui("working", "PRESERVANDO ESTADO...", ["Sincronizando con Git..."])
-            
+
             # 3. Operaciones Git
+            # git add . es vital para que los archivos nuevos cuenten como cambios
             if git_cmd(["add", "."]):
-                commit_msg = f"[SHADOW_AUTO]: {timestamp} - Preservación de estado"
+                commit_msg = f"[SHADOW_AUTO]: {timestamp_legible} - Preservación de estado"
                 if git_cmd(["commit", "-m", commit_msg]):
-                    print(f"[BRUMA]: Commit exitoso a las {timestamp}")
+                    print(f"[BRUMA]: Commit exitoso a las {timestamp_legible}")
                     notificar_tui("success", "ESTADO PRESERVADO", [
-                        f"Hora: {timestamp}",
+                        f"Hora: {timestamp_legible}",
                         "Rama: dev",
                         "Cambios asegurados en Git"
                     ])
         else:
-            # Opcional: limpiar reporte anterior si no hay cambios
-            if report_file.exists():
-                pass 
+            # Si no hay cambios, el agente sigue vivo pero no bombardea la TUI
+            # Mantenemos el reporte en "success" o lo dejamos como está
+            pass
 
     def run(self):
         print("[BRUMA]: Bruma Online (Modo Vigilante).")
         while True:
             self.ejecutar_ciclo()
-            time.sleep(3) # Sincroniza cada 5 minutos
+            # 3 segundos es genial para debug, pero 10s es más sano para Git
+            time.sleep(3) 
 
 if __name__ == "__main__":
     bruma = BrumaSync()
