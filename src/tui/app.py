@@ -7,7 +7,7 @@ from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.tui.widgets import TelemetryBar
-from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal, , BrumaSyncModal
+from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal, BrumaSyncModal
 
 class ShadowGrimorio(App):
     BINDINGS = [
