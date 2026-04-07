@@ -67,7 +67,7 @@ class BrumaSync:
         print("[BRUMA]: Bruma Online (Modo Vigilante).")
         while True:
             self.ejecutar_ciclo()
-            time.sleep(300) # Sincroniza cada 5 minutos
+            time.sleep(3) # Sincroniza cada 5 minutos
 
 if __name__ == "__main__":
     bruma = BrumaSync()
