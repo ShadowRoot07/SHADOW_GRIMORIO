@@ -19,7 +19,7 @@ class ChatScreen(Screen):
         scrollbar-gutter: stable;
     }
     #chat_input { border: tall #BB00FF; background: #0a0a0a; margin-top: 1; }
-    .cmd_hint { color: #555; margin-left: 2; font-size: 80%; }
+    .cmd_hint { color: #555; margin-left: 2; }
     """
 
     def compose(self) -> ComposeResult:
@@ -33,48 +33,46 @@ class ChatScreen(Screen):
 
     def on_mount(self) -> None:
         self.raiz = Path(__file__).resolve().parents[2]
-        self.log = self.query_one("#console_log")
-        self.log.write("[bold purple]NEXO ESTABLECIDO.[/] Oráculo escuchando en el puerto del ZTE...")
+        # Cambiamos 'log' por 'console' para evitar conflicto con Textual
+        self.console = self.query_one("#console_log")
+        self.console.write("[bold purple]NEXO ESTABLECIDO.[/] Oráculo listo en el ZTE.")
         self.query_one("#chat_input").focus()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         if not text: return
 
-        self.log.write(f"\n[bold cyan]ShadowRoot07:[/] {text}")
+        self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {text}")
         self.query_one("#chat_input").value = ""
 
         if text.startswith("/"):
             await self.procesar_comando(text[1:])
         else:
-            self.log.write("[italic yellow]El Oráculo analiza la semántica...[/]")
-            # Simulación de respuesta asíncrona
+            self.console.write("[italic yellow]El Oráculo analiza la semántica...[/]")
             await asyncio.sleep(0.4)
-            self.log.write("[bold purple]Oráculo:[/] Enlace cognitivo limitado. Usa comandos [green]/[/] para control directo.")
+            self.console.write("[bold purple]Oráculo:[/] Enlace cognitivo limitado. Usa [green]/[/] comandos.")
 
     async def ejecutar_agente_async(self, script_path: str, nombre_agente: str):
-        """Ejecuta un script de agente sin bloquear el hilo principal."""
         full_path = self.raiz / script_path
         if not full_path.exists():
-            self.log.write(f"[red]Error:[/] No existe: {script_path}")
+            self.console.write(f"[red]Error:[/] No existe: {script_path}")
             return
 
-        self.log.write(f"[bold yellow]>>>[/] Desplegando [bold]{nombre_agente}[/]...")
+        self.console.write(f"[bold yellow]>>>[/] Desplegando [bold]{nombre_agente}[/]...")
 
         try:
-            # Ejecución en background total
             await asyncio.create_subprocess_exec(
                 "python", str(full_path),
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            self.log.write(f"[dim]Agente {nombre_agente} operando en las sombras.[/]")
+            self.console.write(f"[dim]Agente {nombre_agente} operando en las sombras.[/]")
         except Exception as e:
-            self.log.write(f"[red]Fallo crítico:[/] {e}")
+            self.console.write(f"[red]Fallo crítico:[/] {e}")
 
     async def procesar_comando(self, cmd_input: str):
-        """Manejador de comandos del sistema."""
         parts = cmd_input.lower().split()
+        if not parts: return
         cmd = parts[0]
 
         if cmd == "scan":
@@ -86,8 +84,8 @@ class ChatScreen(Screen):
         elif cmd == "sync":
             await self.ejecutar_agente_async("src/logic/agents/bruma_sync.py", "Bruma_Sync")
         elif cmd == "clear":
-            self.log.clear()
-            self.log.write("[dim]Buffer de consola purgado.[/]")
+            self.console.clear()
+            self.console.write("[dim]Buffer de consola purgado.[/]")
         else:
-            self.log.write(f"[red]Error:[/] '{cmd}' no es un comando reconocido.")
+            self.console.write(f"[red]Error:[/] '{cmd}' no reconocido.")
 
