@@ -8,9 +8,20 @@ from src.utils.ascii_loader import ASCIILoader
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.tui.widgets import TelemetryBar
-from src.tui.modals import WatchdogErrorModal, JanitorAuditModal, GhostWritingModal, BrumaSyncModal
+
+# Importación centralizada de Modales
+from src.tui.modals import (
+    WatchdogErrorModal, JanitorAuditModal,
+    GhostWritingModal, BrumaSyncModal,
+    ExplorerModal, VoidHunterModal
+)
 
 class ShadowGrimorio(App):
+    """
+    Núcleo Central del Shadow_Grimorio.
+    Gestiona el ciclo de vida de los agentes y la interfaz principal.
+    """
+    
     BINDINGS = [
         ("q", "quit", "Salir"),
         ("g", "agentes", "Agentes"),
@@ -26,81 +37,85 @@ class ShadowGrimorio(App):
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
 
-        # Rutas de Reportes
-        self.wd_report = self.raiz_proyecto / "logs" / "watchdog_report.json"
-        self.jn_report = self.raiz_proyecto / "logs" / "janitor_report.json"
-        self.gh_report = self.raiz_proyecto / "logs" / "ghost_report.json"
-        self.br_report = self.raiz_proyecto / "logs" / "bruma_report.json"
+        # --- Mapeo de Reportes de Agentes ---
+        self.reports = {
+            "void": self.raiz_proyecto / "logs" / "void_hunter_report.json",
+            "explorer": self.raiz_proyecto / "logs" / "explorer_report.json",
+            "bruma": self.raiz_proyecto / "logs" / "bruma_report.json",
+            "watchdog": self.raiz_proyecto / "logs" / "watchdog_report.json",
+            "janitor": self.raiz_proyecto / "logs" / "janitor_report.json",
+            "ghost": self.raiz_proyecto / "logs" / "ghost_report.json",
+            "survival": self.raiz_proyecto / "logs" / "survival_report.json"
+        }
 
-        # Timestamps
-        self.last_wd_time = ""
-        self.last_jn_time = ""
-        self.last_gh_time = ""
-        self.last_br_time = ""
-
+        # --- Estado de Timestamps para evitar bucles de modales ---
+        self.last_timestamps = {k: "" for k in self.reports.keys()}
         self.modal_abierto = False
 
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
+        # Escaneo de pulso del sistema cada 2 segundos
         self.set_interval(2.0, self.global_observer)
 
     def global_observer(self) -> None:
-        """Vigilancia centralizada de reportes."""
-        if self.modal_abierto: 
+        """
+        Observador de Oráculo: Monitorea cambios en los archivos JSON de los agentes
+        y dispara los modales correspondientes por orden de prioridad.
+        """
+        if self.modal_abierto:
             return
 
-        # 4. Chequeo Bruma_Sync (Prioridad en este debug)
-        if self.br_report.exists():
-            try:
-                with open(self.br_report, "r") as f:
-                    data = json.load(f)
-                t = str(data.get("timestamp", ""))
-                
-                if t != self.last_br_time:
-                    self.last_br_time = t
-                    self.modal_abierto = True
-                    # Empujamos la pantalla y forzamos el callback de cierre
-                    self.push_screen(BrumaSyncModal(data), callback=self.on_modal_close)
-                    return
-            except Exception:
-                pass
+        # Definición de prioridad y mapeo a modales
+        # (Ruta, Clave interna del JSON, Clase del Modal)
+        prioridad_agentes = [
+            (self.reports["void"], "void", VoidHunterModal),
+            (self.reports["watchdog"], "watchdog", WatchdogErrorModal),
+            (self.reports["explorer"], "explorer", ExplorerModal),
+            (self.reports["bruma"], "bruma", BrumaSyncModal),
+            (self.reports["janitor"], "janitor", JanitorAuditModal),
+            (self.reports["ghost"], "ghost", GhostWritingModal),
+        ]
 
-        # 1, 2, 3 (Otros agentes permanecen igual pero con la seguridad de modal_abierto)
-        for report, last_time, modal_cls in [
-            (self.wd_report, "last_wd_time", WatchdogErrorModal),
-            (self.jn_report, "last_jn_time", JanitorAuditModal),
-            (self.gh_report, "last_gh_time", GhostWritingModal),
-        ]:
-            if report.exists():
+        for path, key, modal_cls in prioridad_agentes:
+            if path.exists():
                 try:
-                    with open(report, "r") as f: data = json.load(f)
-                    # Lógica simplificada para el debug
-                    timestamp_key = "last_check" if "last_check" in data else ("last_purge" if "last_purge" in data else "timestamp")
-                    t = str(data.get(timestamp_key, ""))
+                    with open(path, "r") as f:
+                        data = json.load(f)
                     
-                    if t != getattr(self, last_time):
-                        setattr(self, last_time, t)
+                    # Intentar obtener un timestamp válido del JSON
+                    t = str(data.get("timestamp", 
+                           data.get("last_check", 
+                           data.get("last_purge", ""))))
+
+                    if t and t != self.last_timestamps[key]:
+                        self.last_timestamps[key] = t
                         self.modal_abierto = True
                         self.push_screen(modal_cls(data), callback=self.on_modal_close)
-                        return
-                except: pass
+                        return # Solo procesar un evento por ciclo
+                except Exception:
+                    continue
 
     def on_modal_close(self, _=None) -> None:
-        """Callback agresivo para asegurar que el observer siga trabajando."""
+        """Libera el bloqueo de modales al cerrar una ventana."""
         self.modal_abierto = False
 
     def aplicar_estilos_tema(self) -> None:
+        """Sincroniza el fondo de la pantalla con el tema actual."""
         self.screen.styles.background = self.tema['bg']
 
     def compose(self) -> ComposeResult:
+        """Construye la arquitectura visual base."""
         yield TelemetryBar()
         with Container(id="main_layout"):
             with Vertical():
-                with Center(): yield Static(ASCIILoader.get_art('splash'), id="logo")
+                with Center():
+                    yield Static(ASCIILoader.get_art('splash'), id="logo")
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
 
+    # --- Acciones de Navegación ---
+    
     def action_chat(self) -> None:
         from src.tui.chat import ChatScreen
         self.push_screen(ChatScreen())
@@ -109,11 +124,20 @@ class ShadowGrimorio(App):
         from src.tui.agents_menu import AgentsMenu
         self.push_screen(AgentsMenu())
 
+    def action_main_menu(self) -> None:
+        from src.tui.main_menu import MainMenuScreen
+        self.push_screen(MainMenuScreen())
+
     def action_back(self) -> None:
-        if len(self.screen_stack) > 1: 
+        if len(self.screen_stack) > 1:
             self.pop_screen()
-            self.modal_abierto = False # Reset preventivo
+            self.modal_abierto = False
 
     async def action_quit(self) -> None:
         self.exit()
+
+if __name__ == "__main__":
+    # Punto de entrada para ejecución directa
+    app = ShadowGrimorio()
+    app.run()
 

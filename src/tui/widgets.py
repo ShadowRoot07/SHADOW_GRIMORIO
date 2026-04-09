@@ -1,30 +1,36 @@
 import json
 from pathlib import Path
 from textual.widgets import Static
-from src.logic.hardware_bridge import bridge
 
 class TelemetryBar(Static):
-    """Barra superior optimizada para bajo consumo de CPU."""
+    """Barra superior que monitorea RAM y Estado del Sistema."""
 
     def on_mount(self) -> None:
-        # Actualización cada 5 segundos para ahorrar batería en el ZTE
+        self.raiz = Path(__file__).resolve().parents[2]
+        self.report_path = self.raiz / "logs" / "survival_report.json"
+        # Iniciamos con un estado base para evitar el atributo vacío antes del primer intervalo
+        self.update_stats()
         self.set_interval(5.0, self.update_stats)
 
     def update_stats(self) -> None:
-        ram = bridge.obtener_ram_libre()
-        bat = bridge.obtener_bateria()
+        """Lee el reporte de supervivencia y actualiza la UI."""
+        ram = "???"
+        status_color = "white"
 
-        color = "green" if ram > 500 else "yellow" if ram > 200 else "red"
-        status_text = "OK" if ram > 200 else "LOW"
+        if self.report_path.exists():
+            try:
+                # Usamos una lectura rápida
+                data = json.loads(self.report_path.read_text())
+                ram = f"{data['stats']['ram']}MB"
+                status = data.get("status", "HEALTHY")
+                status_color = "green" if status == "HEALTHY" else "red"
+            except Exception:
+                pass
 
-        self.update(
-            f"RAM: [bold {color}]{ram}MB[/] | "
-            f"BAT: [bold cyan]{bat}%[/] | "
-            f"SYS: [bold {color}]{status_text}[/]"
-        )
+        # Actualizamos el contenido interno de Static
+        self.update(f"[{status_color}]● GRIMORIO STATUS[/] | [cyan]RAM:[/] {ram} | [yellow]DEV MODE[/]")
 
-        if ram < 150:
-            self.styles.background = "#330000"
-        else:
-            self.styles.background = "transparent"
+    # ELIMINADO: render(self) -> str
+    # Al eliminarlo, Textual usa automáticamente el contenido de self.update() 
+    # evitando el AttributeError de '_content'.
 

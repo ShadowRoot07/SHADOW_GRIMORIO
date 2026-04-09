@@ -1,74 +1,122 @@
 import time
 import sys
+import json
 import os
 from pathlib import Path
 
-# --- CONFIGURACIÓN DE RUTA CRÍTICA ---
-# Asegura que el proceso hijo encuentre el paquete 'src'
-current_path = Path(__file__).resolve()
-base_path = current_path.parent.parent.parent.parent
-sys.path.append(str(base_path))
+# --- UNIFICACIÓN DE RUTA ---
+def buscar_raiz():
+    return Path("/data/data/com.termux/files/home/BIG-Projects/SHADOW_GRIMORIO")
 
-try:
-    from src.logic.hardware_bridge import bridge
-    from src.logic.agent_manager import manager
-    from loguru import logger
-except ImportError as e:
-    # Error crítico: Si no encuentra las rutas, imprimimos directo a stderr
-    sys.stderr.write(f" [!] Error de importación en SURVIVAL: {e}\n")
-    sys.exit(1)
+raiz = buscar_raiz()
+report_file = raiz / "logs" / "survival_report.json"
 
-def run():
-    """Protocolo de Supervivencia: Monitorea batería y recursos del ZTE."""
-    logger.info("🛡️ [SURVIVAL]: Protocolo de monitoreo de hardware iniciado.")
+class SurvivalAgent:
+    def __init__(self):
+        print("\033[1;32m[SURVIVAL]\033[0m: Monitor de hardware nativo (Linux-Kernel Mode) activo.")
 
-    while True:
+    def leer_archivo_seguro(self, ruta):
+        """Intenta leer un archivo de sistema sin crashear."""
+        if os.path.exists(ruta):
+            try:
+                with open(ruta, "r") as f:
+                    return f.read().strip()
+            except:
+                return None
+        return None
+
+    def obtener_stats_termux(self):
+        """Busca datos directamente en /proc y /sys."""
+        stats = {"ram": 0, "bat": 0, "temp": 0}
+
+        # 1. RAM (Lectura directa de Memoria Disponible)
         try:
-            ram_libre = bridge.obtener_ram_libre()
-            bateria = bridge.obtener_bateria()
+            with open("/proc/meminfo", "r") as f:
+                for line in f:
+                    if "MemAvailable" in line:
+                        stats["ram"] = int(line.split()[1]) // 1024
+                        break
+        except: pass
 
-            # --- LATIDO (HEARTBEAT) ---
-            # Esto confirma que el loop no está trabado
-            logger.info(f"💓 [LATIDO] RAM: {ram_libre}MB | BATT: {bateria}%")
+        # 2. BATERÍA (Bypass de Termux:API -> Acceso directo a Power Supply)
+        rutas_bat = [
+            "/sys/class/power_supply/battery/capacity",
+            "/sys/class/power_supply/bms/capacity",
+            "/sys/class/power_supply/main/capacity"
+        ]
+        for r in rutas_bat:
+            val = self.leer_archivo_seguro(r)
+            if val is not None:
+                stats["bat"] = int(val)
+                break
 
-            # NIVEL 1: ADVERTENCIA (RAM < 500MB)
-            if ram_libre < 500:
-                logger.warning(f"⚠️ [RAM BAJA]: {ram_libre}MB libres. Suspendiendo GHOST_CODER...")
-                manager.apagar_agente("ghost_coder")
+        # 3. TEMPERATURA (Bypass de Thermal Zones)
+        rutas_temp = [
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/power_supply/battery/temp",
+            "/sys/class/thermal/thermal_zone1/temp"
+        ]
+        for r in rutas_temp:
+            val = self.leer_archivo_seguro(r)
+            if val is not None:
+                t = int(val)
+                # Conversión estándar de miligrados a grados
+                stats["temp"] = t // 1000 if t > 1000 else t // 10
+                break
+        
+        return stats
 
-            # NIVEL 2: EMERGENCIA (RAM < 200MB)
-            if ram_libre < 200:
-                logger.critical("🔥 [RAM CRÍTICA]: Iniciando PURGA TOTAL del enjambre.")
-                manager.matar_todo()
+    def gestionar_emergencia(self, ram_libre):
+        """Crea un flag para detener procesos pesados si la RAM peligra."""
+        pause_flag = raiz / "logs" / "EXTREME_LOW_RAM.flag"
+        if ram_libre < 300:
+            if not pause_flag.exists():
+                with open(pause_flag, "w") as f:
+                    f.write("STOP")
+                print("\033[1;31m[SURVIVAL]: RAM CRÍTICA (<300MB). Flag de pausa creado.\033[0m")
+        else:
+            if pause_flag.exists():
+                pause_flag.unlink()
 
-            # NIVEL 3: BATERÍA CRÍTICA
-            if bateria < 10:
-                logger.error(f"🪫 [ENERGÍA]: {bateria}% restante. Hibernando.")
-                time.sleep(300)
-            else:
-                # Forzamos el vaciado del búfer para que el log se actualice en tiempo real
-                sys.stdout.flush()
-                time.sleep(30)
-                
+    def ejecutar_protocolos(self, stats):
+        status = "HEALTHY"
+        alerts = []
+
+        # Solo alertamos si el valor es real (mayor a 0)
+        if 0 < stats["bat"] < 15:
+            status = "CRITICAL"
+            alerts.append(f"ENERGÍA BAJA: {stats['bat']}%")
+
+        if stats["ram"] < 400:
+            status = "WARNING"
+            alerts.append(f"RAM LIMITADA: {stats['ram']}MB")
+            self.gestionar_emergencia(stats["ram"])
+
+        report = {
+            "status": status,
+            "stats": stats,
+            "alerts": alerts,
+            "timestamp": time.time()
+        }
+
+        # Escritura segura del reporte
+        try:
+            report_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(report_file, "w") as f:
+                json.dump(report, f, indent=2)
         except Exception as e:
-            logger.error(f"Error en loop de supervivencia: {e}")
-            time.sleep(10)
+            print(f"Error escribiendo reporte: {e}")
+
+    def run(self):
+        while True:
+            try:
+                stats = self.obtener_stats_termux()
+                self.ejecutar_protocolos(stats)
+            except Exception as e:
+                print(f"Error en el ciclo de supervivencia: {e}")
+            
+            time.sleep(15)
 
 if __name__ == "__main__":
-    # Aseguramos que el directorio de logs exista
-    log_dir = base_path / "logs"
-    log_dir.mkdir(exist_ok=True)
-    
-    log_file = log_dir / "daemon_survival.log"
-    
-    # Configuración del logger: 'enqueue=True' ayuda con el buffering en procesos separados
-    logger.remove() # Eliminamos el handler por defecto
-    logger.add(sys.stdout, colorize=True, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>")
-    logger.add(log_file, rotation="1 MB", retention="1 days", enqueue=True)
-
-    try:
-        run()
-    except KeyboardInterrupt:
-        logger.info("🛑 [SURVIVAL]: Apagado manual detectado.")
-        sys.exit(0)
+    SurvivalAgent().run()
 

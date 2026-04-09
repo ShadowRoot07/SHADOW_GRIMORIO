@@ -259,3 +259,95 @@ class BrumaSyncModal(ModalScreen):
     #close_br { width: 100%; background: #444; color: white; border: none; }
     """
 
+
+
+class ExplorerModal(ModalScreen):
+    """Ventana Amarilla/Dorado para visualizar el mapa del proyecto."""
+
+    def __init__(self, data: dict):
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        tree = self.data.get("tree", [])
+        total = self.data.get("total_files", 0)
+
+        with Vertical(id="explorer_modal"):
+            yield Label("🧭 CARTOGRAFÍA DEL GRIMORIO", id="ex_title")
+            yield Label(f"ELEMENTOS RASTREADOS: [bold]{total}[/]", id="ex_subtitle")
+
+            with ScrollableContainer(id="ex_scroll"):
+                for line in tree:
+                    # Aplicamos color dorado a los conectores ASCII
+                    clean_line = line.replace("├──", "[#FFD700]├──[/]").replace("└──", "[#FFD700]└──[/]").replace("│", "[#FFD700]│[/]")
+                    yield Label(clean_line, classes="tree_line")
+
+            with Grid(id="ex_footer"):
+                yield Button("CERRAR MAPA", id="close_ex")
+
+    def on_mount(self) -> None:
+        container = self.query_one("#explorer_modal")
+        container.styles.border = ("thick", "#FFD700") # Dorado
+        container.styles.background = "#0f0f00" # Fondo oscuro con tinte amarillento
+        self.query_one("#ex_title").styles.color = "#FFFF00" # Amarillo Neón
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close_ex":
+            self.dismiss()
+
+    CSS = """
+    #explorer_modal { width: 90%; height: 80%; align: center middle; padding: 1; }
+    #ex_title { text-align: center; text-style: bold; margin-bottom: 0; }
+    #ex_subtitle { text-align: center; background: #222200; margin: 1 0; padding: 0 1; }
+    #ex_scroll { height: 1fr; border: solid #555500; background: #000; padding: 1; }
+    
+    .tree_line { color: #FFFACD; text-style: bold; } 
+    
+    #ex_footer { grid-size: 1; height: 3; margin-top: 1; }
+    #close_ex { width: 100%; background: #555500; color: white; border: none; }
+    """
+
+
+class VoidHunterModal(ModalScreen):
+    def __init__(self, data: dict):
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        findings = self.data.get("findings", [])
+        
+        with Vertical(id="void_modal"):
+            yield Label("🌌 DIAGNÓSTICO DEL VACÍO", id="vd_title")
+            
+            with ScrollableContainer(id="vd_scroll"):
+                if findings:
+                    for f in findings:
+                        with Vertical(classes="finding_card"):
+                            yield Label(f"[b]ARCHIVO:[/b] [#00BFFF]{f['file']}[/]")
+                            yield Label(f"[b]FALLO:[/b] [#FF9999]{f['issue']}[/]")
+                            yield Label(f"[b]FIX:[/b] [#99FF99]{f['fix']}[/]")
+                            yield Label("─" * 20, classes="separator")
+                else:
+                    yield Label("El Grimorio está optimizado. Sin vacíos.", id="vd_empty")
+
+            with Grid(id="vd_footer"):
+                yield Button("ENTENDIDO", id="close_vd")
+
+    def on_mount(self) -> None:
+        c = self.query_one("#void_modal")
+        c.styles.border = ("thick", "#0047AB")
+        c.styles.background = "#00050a"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss()
+
+    CSS = """
+    #void_modal { width: 90%; height: 80%; align: center middle; padding: 1; }
+    #vd_title { text-align: center; text-style: bold; color: #00BFFF; margin-bottom: 1; }
+    #vd_scroll { height: 1fr; border: solid #0047AB; background: #000; padding: 1; }
+    .finding_card { margin-bottom: 1; padding: 0 1; }
+    .separator { color: #002244; margin: 0; }
+    #vd_footer { grid-size: 1; height: 3; margin-top: 1; }
+    #close_vd { width: 100%; background: #0047AB; color: white; border: none; }
+    """
+

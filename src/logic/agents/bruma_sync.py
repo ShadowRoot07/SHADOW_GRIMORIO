@@ -64,7 +64,7 @@ class BrumaSync:
         print("[BRUMA]: Online.")
         while True:
             self.ejecutar_ciclo()
-            time.sleep(5) # 5 segundos es ideal para no saturar Git pero ser reactivo
+            time.sleep(300) # 5 minutos para cada commit 
 
 if __name__ == "__main__":
     BrumaSync().run()
