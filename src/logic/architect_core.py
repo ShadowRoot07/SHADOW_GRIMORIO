@@ -10,6 +10,35 @@ class ArchitectCore:
         self.project_root = current_file.parents[2]
         logger.info(f"🏗️ Base del Grimorio: {self.project_root}")
 
+    def planificar(self, raw_response: str):
+        """
+        Analiza la respuesta de Groq ANTES de ejecutar para identificar archivos.
+        Permite al GhostCoder crear backups preventivos.
+        """
+        plan = []
+        try:
+            inicio = raw_response.find("{")
+            fin = raw_response.rfind("}") + 1
+            if inicio == -1 or fin == 0:
+                return plan
+
+            data = json.loads(raw_response[inicio:fin])
+
+            # Caso 1: Parches
+            if "patches" in data:
+                for p in data["patches"]:
+                    plan.append({"type": "edit", "file": p["path"]})
+            
+            # Caso 2: Archivos nuevos o completos
+            if "files" in data:
+                for f in data["files"]:
+                    plan.append({"type": "edit", "file": f["path"]})
+                    
+            return plan
+        except Exception as e:
+            logger.warning(f"No se pudo planificar la instrucción: {e}")
+            return plan
+
     def procesar_instruccion(self, raw_response: str, cwd_usuario: str = None):
         try:
             inicio = raw_response.find("{")
@@ -68,6 +97,5 @@ class ArchitectCore:
         except Exception as e:
             return {"status": "error", "message": f"Fallo en parche: {e}"}
 
-# --- ESTA LÍNEA ES LA QUE EVITA EL ERROR DE IMPORTACIÓN ---
 architect = ArchitectCore()
 
