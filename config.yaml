@@ -1,0 +1,11 @@
+shadow_alias: ShadowRoot07
+shadow_env: development
+shadow_theme: CYBERPUNK
+sounds_path: ./assets/sounds
+lexicon_path: ./logs/lexicon_index.json
+github_username: ShadowRoot07
+groq_model: llama-3.3-70b-versatile
+groq_timeout: 30
+groq_cooldown: 2
+groq_retry_limit: 3
+

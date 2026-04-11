@@ -1,4 +1,9 @@
 # Definición de identidades para el Oráculo de SHADOW_GRIMORIO
+import hashlib
+from src.utils.hardware import generar_huella_hardware
+from src.database.manager import db
+from src.database.models import Usuario
+from loguru import logger
 
 AGENT_IDENTITIES = {
     "THE_ARCHITECT": {
@@ -47,8 +52,42 @@ No uses Markdown ni texto extra.""",
     }
 }
 
+class ShadowAccessProtocol:
+    """Gestiona el acceso escalonado y las 4 llaves del usuario."""
+
+    def __init__(self):
+        self.hw_fingerprint = generar_huella_hardware()
+
+    def verificar_perfil_existente(self):
+        session = db.get_session()
+        user = session.query(Usuario).first()
+        session.close()
+        return user is not None
+
+    def generar_super_key(self, k1: str, k2: str, k3: str) -> str:
+        """La 4ta Llave: La Super Key que orquesta el sistema."""
+        combined = f"{k1}{k2}{k3}".encode()
+        # SHA-512 para asegurar una entropía máxima en el móvil
+        return hashlib.sha512(combined).hexdigest()
+
+    def validar_acceso(self, k2_input: str, k3_input: str) -> bool:
+        """Valida las llaves contra la Super Key guardada."""
+        session = db.get_session()
+        user = session.query(Usuario).first()
+        if not user:
+            session.close()
+            return False
+        
+        # Re-calculamos la Super Key con la K1 interna y los inputs
+        test_super_key = self.generar_super_key(user.key_hash_1, k2_input, k3_input)
+        
+        valid = test_super_key == user.super_key_hash
+        session.close()
+        return valid
+
+sap = ShadowAccessProtocol()
+
 def obtener_identidad(nombre_agente: str) -> dict:
-    """Retorna la identidad solicitada o un perfil genérico para evitar errores."""
     key = nombre_agente.upper()
     return AGENT_IDENTITIES.get(key, {
         "prompt": "Eres un agente autónomo del enjambre Shadow.",

@@ -1,15 +1,20 @@
 import json
-import os
 from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static, Label
 from textual.containers import Container, Vertical, Center
-from src.utils.ascii_loader import ASCIILoader
+
+# Lógica y Configuración
 from src.logic.config import config
 from src.tui.themes import THEMES
+from src.utils.ascii_loader import ASCIILoader
 from src.tui.widgets import TelemetryBar
 
-# Importación centralizada de Modales
+# Importación de Pantallas de Flujo
+from src.tui.main_menu import MainMenuScreen
+from src.tui.init_wizard import InitWizard
+
+# Importación centralizada de Modales de Agentes
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
     GhostWritingModal, BrumaSyncModal,
@@ -19,7 +24,7 @@ from src.tui.modals import (
 class ShadowGrimorio(App):
     """
     Núcleo Central del Shadow_Grimorio.
-    Gestiona el ciclo de vida de los agentes y la interfaz principal.
+    Gestiona el ciclo de vida de los agentes y la bifurcación de seguridad.
     """
     
     BINDINGS = [
@@ -31,8 +36,9 @@ class ShadowGrimorio(App):
         ("escape", "back", "Volver")
     ]
 
-    def __init__(self):
+    def __init__(self, es_primera_vez: bool = False):
         super().__init__()
+        self.es_primera_vez = es_primera_vez
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
@@ -55,19 +61,23 @@ class ShadowGrimorio(App):
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
+        
+        # --- BIFURCACIÓN DE SEGURIDAD ---
+        if self.es_primera_vez:
+            # Si el sistema detectó que no hay perfil, lanza el Sellado
+            self.push_screen(InitWizard())
+        else:
+            # Si ya existe, lanza el menú principal (que pedirá el Ritual)
+            self.push_screen(MainMenuScreen())
+
         # Escaneo de pulso del sistema cada 2 segundos
         self.set_interval(2.0, self.global_observer)
 
     def global_observer(self) -> None:
-        """
-        Observador de Oráculo: Monitorea cambios en los archivos JSON de los agentes
-        y dispara los modales correspondientes por orden de prioridad.
-        """
+        """Monitorea reportes de agentes y dispara modales por prioridad."""
         if self.modal_abierto:
             return
 
-        # Definición de prioridad y mapeo a modales
-        # (Ruta, Clave interna del JSON, Clase del Modal)
         prioridad_agentes = [
             (self.reports["void"], "void", VoidHunterModal),
             (self.reports["watchdog"], "watchdog", WatchdogErrorModal),
@@ -82,30 +92,26 @@ class ShadowGrimorio(App):
                 try:
                     with open(path, "r") as f:
                         data = json.load(f)
-                    
-                    # Intentar obtener un timestamp válido del JSON
-                    t = str(data.get("timestamp", 
-                           data.get("last_check", 
+
+                    t = str(data.get("timestamp",
+                           data.get("last_check",
                            data.get("last_purge", ""))))
 
                     if t and t != self.last_timestamps[key]:
                         self.last_timestamps[key] = t
                         self.modal_abierto = True
                         self.push_screen(modal_cls(data), callback=self.on_modal_close)
-                        return # Solo procesar un evento por ciclo
+                        return 
                 except Exception:
                     continue
 
     def on_modal_close(self, _=None) -> None:
-        """Libera el bloqueo de modales al cerrar una ventana."""
         self.modal_abierto = False
 
     def aplicar_estilos_tema(self) -> None:
-        """Sincroniza el fondo de la pantalla con el tema actual."""
         self.screen.styles.background = self.tema['bg']
 
     def compose(self) -> ComposeResult:
-        """Construye la arquitectura visual base."""
         yield TelemetryBar()
         with Container(id="main_layout"):
             with Vertical():
@@ -115,7 +121,7 @@ class ShadowGrimorio(App):
         yield Footer()
 
     # --- Acciones de Navegación ---
-    
+
     def action_chat(self) -> None:
         from src.tui.chat import ChatScreen
         self.push_screen(ChatScreen())
@@ -125,7 +131,7 @@ class ShadowGrimorio(App):
         self.push_screen(AgentsMenu())
 
     def action_main_menu(self) -> None:
-        from src.tui.main_menu import MainMenuScreen
+        # Si ya estamos en el MainMenuScreen a través del stack, no lo duplicamos
         self.push_screen(MainMenuScreen())
 
     def action_back(self) -> None:
@@ -137,7 +143,7 @@ class ShadowGrimorio(App):
         self.exit()
 
 if __name__ == "__main__":
-    # Punto de entrada para ejecución directa
-    app = ShadowGrimorio()
+    # Fallback para desarrollo, asume retorno de usuario
+    app = ShadowGrimorio(es_primera_vez=False)
     app.run()
 
