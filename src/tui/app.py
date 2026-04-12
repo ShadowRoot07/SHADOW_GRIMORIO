@@ -9,10 +9,13 @@ from src.logic.config import config
 from src.tui.themes import THEMES
 from src.utils.ascii_loader import ASCIILoader
 from src.tui.widgets import TelemetryBar
+from src.database.manager import db
+from src.database.models import Usuario
 
-# Importación de Pantallas de Flujo
+# Importación de Pantallas de Flujo y Seguridad
 from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
+from src.logic.identity_matrix import sap
 
 # Importación centralizada de Modales de Agentes
 from src.tui.modals import (
@@ -24,9 +27,9 @@ from src.tui.modals import (
 class ShadowGrimorio(App):
     """
     Núcleo Central del Shadow_Grimorio.
-    Gestiona el ciclo de vida de los agentes y la bifurcación de seguridad.
+    Gestiona el ciclo de vida de los agentes y la bifurcación de seguridad SAP.
     """
-    
+
     BINDINGS = [
         ("q", "quit", "Salir"),
         ("g", "agentes", "Agentes"),
@@ -54,24 +57,41 @@ class ShadowGrimorio(App):
             "survival": self.raiz_proyecto / "logs" / "survival_report.json"
         }
 
-        # --- Estado de Timestamps para evitar bucles de modales ---
         self.last_timestamps = {k: "" for k in self.reports.keys()}
         self.modal_abierto = False
 
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
-        
-        # --- BIFURCACIÓN DE SEGURIDAD ---
-        if self.es_primera_vez:
-            # Si el sistema detectó que no hay perfil, lanza el Sellado
-            self.push_screen(InitWizard())
-        else:
-            # Si ya existe, lanza el menú principal (que pedirá el Ritual)
-            self.push_screen(MainMenuScreen())
+
+        # --- BIFURCACIÓN DE SEGURIDAD SAP ---
+        self.verificar_acceso_shadow()
 
         # Escaneo de pulso del sistema cada 2 segundos
         self.set_interval(2.0, self.global_observer)
+
+    def verificar_acceso_shadow(self) -> None:
+        """Determina si el usuario debe ir al Wizard, a las Pruebas o al Menú."""
+        if not sap.verificar_perfil_existente():
+            # Fase 0: No hay registro. Inyectamos perfil debug y lanzamos Wizard.
+            sap.inicializar_usuario_debug()
+            self.push_screen(InitWizard())
+            return
+
+        # Fase 1-3: El perfil existe, verificar si superó las pruebas
+        session = db.get_session()
+        user = session.query(Usuario).first()
+        
+        if user and not user.pruebas_completadas:
+            # Si no ha completado las pruebas, lanzamos el orquestador de pruebas
+            # (Aquí es donde integraremos el TrialScreen próximamente)
+            from src.tui.trial_modals import PhaseOneModal
+            self.push_screen(PhaseOneModal())
+        else:
+            # Acceso concedido al Arquitecto Maestro
+            self.push_screen(MainMenuScreen())
+        
+        session.close()
 
     def global_observer(self) -> None:
         """Monitorea reportes de agentes y dispara modales por prioridad."""
@@ -101,7 +121,7 @@ class ShadowGrimorio(App):
                         self.last_timestamps[key] = t
                         self.modal_abierto = True
                         self.push_screen(modal_cls(data), callback=self.on_modal_close)
-                        return 
+                        return
                 except Exception:
                     continue
 
@@ -131,7 +151,6 @@ class ShadowGrimorio(App):
         self.push_screen(AgentsMenu())
 
     def action_main_menu(self) -> None:
-        # Si ya estamos en el MainMenuScreen a través del stack, no lo duplicamos
         self.push_screen(MainMenuScreen())
 
     def action_back(self) -> None:
@@ -143,7 +162,8 @@ class ShadowGrimorio(App):
         self.exit()
 
 if __name__ == "__main__":
-    # Fallback para desarrollo, asume retorno de usuario
-    app = ShadowGrimorio(es_primera_vez=False)
+    # Detectamos si es la primera vez basándonos en la existencia de la DB/Usuario
+    primera = not sap.verificar_perfil_existente()
+    app = ShadowGrimorio(es_primera_vez=primera)
     app.run()
 
