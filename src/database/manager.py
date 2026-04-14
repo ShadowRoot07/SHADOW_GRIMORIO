@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from src.database.models import Base, Secreto
 from src.logic.config import config
@@ -13,11 +13,23 @@ class DatabaseManager:
         self.engine = None
         self.SessionLocal = None
 
-    def init_db(self):
+    def init_db(self, drop_all: bool = False):
+        """
+        Materializa las tablas. 
+        Si drop_all es True, borra todo (útil para resetear el Protocolo SAP).
+        """
         try:
             if not self.engine:
                 self.engine = create_engine(self.db_url)
-                self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+                self.SessionLocal = sessionmaker(
+                    autocommit=False, 
+                    autoflush=False, 
+                    bind=self.engine
+                )
+            
+            if drop_all:
+                logger.warning("⚠️ DATABASE: Ejecutando purga total de tablas...")
+                Base.metadata.drop_all(bind=self.engine)
 
             Base.metadata.create_all(bind=self.engine)
             logger.success("📁 DATABASE: Memoria sincronizada y Bóveda preparada.")
@@ -25,7 +37,8 @@ class DatabaseManager:
             logger.error(f"❌ DATABASE: Fallo al materializar tablas: {e}")
 
     def get_session(self):
-        if not self.SessionLocal: self.init_db()
+        if not self.SessionLocal: 
+            self.init_db()
         return self.SessionLocal()
 
     def save_secret(self, nombre: str, valor_plano: str):
@@ -38,7 +51,7 @@ class DatabaseManager:
         try:
             # Cifrar el valor usando el protocolo Ghost
             ruido = ghost.obfuscate_data(valor_plano)
-            
+
             # Buscar si ya existe para actualizarlo o crearlo
             secreto = session.query(Secreto).filter_by(nombre=nombre).first()
             if secreto:
@@ -46,7 +59,7 @@ class DatabaseManager:
             else:
                 secreto = Secreto(nombre=nombre, valor_cifrado=ruido)
                 session.add(secreto)
-            
+
             session.commit()
             logger.success(f"🔒 GHOST_SHELL: Secreto '{nombre}' materializado en la bóveda.")
         except Exception as e:
@@ -60,8 +73,9 @@ class DatabaseManager:
         session = self.get_session()
         try:
             secreto = session.query(Secreto).filter_by(nombre=nombre).first()
-            if not secreto: return ""
-            
+            if not secreto: 
+                return ""
+
             # Revelar el dato usando Ghost
             return ghost.reveal_data(secreto.valor_cifrado)
         except Exception as e:

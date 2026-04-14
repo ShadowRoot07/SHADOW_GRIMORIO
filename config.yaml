@@ -1,11 +1,14 @@
 shadow_alias: ShadowRoot07
 shadow_env: development
 shadow_theme: CYBERPUNK
+database_url: postgresql://neondb_owner:npg_lEQ6YGpP1SFc@ep-wandering-term-amb1dpo4-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 sounds_path: ./assets/sounds
-lexicon_path: ./logs/lexicon_index.json
+lexicon_path: !!python/object/apply:pathlib._local.PosixPath
+- ./logs/lexicon_index.json
 github_username: ShadowRoot07
-groq_model: llama-3.3-70b-versatile
+groq_model: llama3-70b-8192
 groq_timeout: 30
 groq_cooldown: 2
 groq_retry_limit: 3
-
+groq_api_key: ""
+github_token: ""

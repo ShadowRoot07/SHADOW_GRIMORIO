@@ -58,33 +58,52 @@ class ShadowAccessProtocol:
     def __init__(self):
         self.hw_fingerprint = generar_huella_hardware()
 
-    def verificar_perfil_existente(self):
+    def verificar_perfil_existente(self) -> bool:
+        """Comprueba si existe algún usuario en la base de datos."""
         session = db.get_session()
-        user = session.query(Usuario).first()
-        session.close()
-        return user is not None
+        try:
+            user = session.query(Usuario).first()
+            return user is not None
+        finally:
+            session.close()
+
+    def inicializar_usuario_debug(self):
+        """Crea el perfil inicial tras un reset de DB para iniciar el SAP."""
+        session = db.get_session()
+        try:
+            nuevo_usuario = Usuario(
+                alias="ShadowRoot07",
+                rango="Iniciado",
+                pruebas_completadas=False
+            )
+            session.add(nuevo_usuario)
+            session.commit()
+            logger.info("👤 SAP: Perfil de 'Iniciado' materializado con éxito.")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ SAP: Error al crear perfil inicial: {e}")
+        finally:
+            session.close()
 
     def generar_super_key(self, k1: str, k2: str, k3: str) -> str:
         """La 4ta Llave: La Super Key que orquesta el sistema."""
         combined = f"{k1}{k2}{k3}".encode()
-        # SHA-512 para asegurar una entropía máxima en el móvil
         return hashlib.sha512(combined).hexdigest()
 
     def validar_acceso(self, k2_input: str, k3_input: str) -> bool:
         """Valida las llaves contra la Super Key guardada."""
         session = db.get_session()
-        user = session.query(Usuario).first()
-        if not user:
-            session.close()
-            return False
-        
-        # Re-calculamos la Super Key con la K1 interna y los inputs
-        test_super_key = self.generar_super_key(user.key_hash_1, k2_input, k3_input)
-        
-        valid = test_super_key == user.super_key_hash
-        session.close()
-        return valid
+        try:
+            user = session.query(Usuario).first()
+            if not user or not user.super_key_hash:
+                return False
 
+            test_super_key = self.generar_super_key(user.key_hash_1, k2_input, k3_input)
+            return test_super_key == user.super_key_hash
+        finally:
+            session.close()
+
+# Instancia global del protocolo
 sap = ShadowAccessProtocol()
 
 def obtener_identidad(nombre_agente: str) -> dict:

@@ -4,7 +4,7 @@ from sqlalchemy.orm import declarative_base
 Base = declarative_base()
 
 class Secreto(Base):
-    """Bóveda cifrada para llaves de API y Tokens (Complemento de shadow_vault.json)."""
+    """Bóveda cifrada para llaves de API y Tokens."""
     __tablename__ = "secretos"
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
@@ -15,18 +15,15 @@ class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
     alias = Column(String, default="ShadowRoot07")
-    rango = Column(String, default="Iniciado")
-
+    rango = Column(String, default="Iniciado") # Usado para trackear el sub-paso de la prueba
+    
     # --- Protocolo de Acceso Shadow (SAP) ---
-    # Cambiado a Integer para manejar niveles de progreso si es necesario
-    pruebas_completadas = Column(Integer, default=0)
+    pruebas_completadas = Column(Boolean, default=False)
 
     # Hashes de seguridad
-    # Nota: No necesitamos guardar K1, K2 y K3 por separado si usamos la Super Key,
-    # pero los mantenemos como String para flexibilidad futura.
-    key_hash_1 = Column(String, nullable=True) 
-    key_hash_2 = Column(String, nullable=True) 
-    key_hash_3 = Column(String, nullable=True) 
+    key_hash_1 = Column(String, nullable=True)
+    key_hash_2 = Column(String, nullable=True)
+    key_hash_3 = Column(String, nullable=True)
 
     # El sello final
     super_key_hash = Column(String, nullable=True)

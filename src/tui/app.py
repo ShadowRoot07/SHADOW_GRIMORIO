@@ -4,7 +4,6 @@ from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static, Label
 from textual.containers import Container, Vertical, Center
 
-# Lógica y Configuración
 from src.logic.config import config
 from src.tui.themes import THEMES
 from src.utils.ascii_loader import ASCIILoader
@@ -12,12 +11,10 @@ from src.tui.widgets import TelemetryBar
 from src.database.manager import db
 from src.database.models import Usuario
 
-# Importación de Pantallas de Flujo y Seguridad
 from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
 from src.logic.identity_matrix import sap
 
-# Importación centralizada de Modales de Agentes
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
     GhostWritingModal, BrumaSyncModal,
@@ -25,10 +22,7 @@ from src.tui.modals import (
 )
 
 class ShadowGrimorio(App):
-    """
-    Núcleo Central del Shadow_Grimorio.
-    Gestiona el ciclo de vida de los agentes y la bifurcación de seguridad SAP.
-    """
+    """Núcleo Central del Shadow_Grimorio."""
 
     BINDINGS = [
         ("q", "quit", "Salir"),
@@ -46,7 +40,6 @@ class ShadowGrimorio(App):
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
 
-        # --- Mapeo de Reportes de Agentes ---
         self.reports = {
             "void": self.raiz_proyecto / "logs" / "void_hunter_report.json",
             "explorer": self.raiz_proyecto / "logs" / "explorer_report.json",
@@ -63,40 +56,54 @@ class ShadowGrimorio(App):
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
-
-        # --- BIFURCACIÓN DE SEGURIDAD SAP ---
         self.verificar_acceso_shadow()
-
-        # Escaneo de pulso del sistema cada 2 segundos
         self.set_interval(2.0, self.global_observer)
 
+    def esta_bloqueado(self) -> bool:
+        """Verifica si el acceso está restringido por pruebas pendientes."""
+        session = db.get_session()
+        user = session.query(Usuario).first()
+        # Si no hay usuario o las pruebas no están marcadas como completadas
+        bloqueado = user is None or not user.pruebas_completadas
+        session.close()
+        return bloqueado
+
     def verificar_acceso_shadow(self) -> None:
-        """Determina si el usuario debe ir al Wizard, a las Pruebas o al Menú."""
         if not sap.verificar_perfil_existente():
-            # Fase 0: No hay registro. Inyectamos perfil debug y lanzamos Wizard.
             sap.inicializar_usuario_debug()
             self.push_screen(InitWizard())
             return
 
-        # Fase 1-3: El perfil existe, verificar si superó las pruebas
         session = db.get_session()
         user = session.query(Usuario).first()
-        
+
+        # Si no hay usuario o las pruebas globales no están en True
         if user and not user.pruebas_completadas:
-            # Si no ha completado las pruebas, lanzamos el orquestador de pruebas
-            # (Aquí es donde integraremos el TrialScreen próximamente)
-            from src.tui.trial_modals import PhaseOneModal
-            self.push_screen(PhaseOneModal())
+            try:
+                # Caso A: Recién iniciado o en medio de Fase 1
+                if user.rango == "Iniciado" or user.rango.startswith("F1_S"):
+                    from src.tui.trial_screen import TrialScreen
+                    self.push_screen(TrialScreen())
+                
+                # Caso B: Fase 1 lista, saltar a Fase 2 (Aquí estaba el bug)
+                elif user.rango == "F1_COMPLETADA" or user.rango.startswith("F2_"):
+                    from src.tui.trial_screen_v2 import TrialScreenV2
+                    self.push_screen(TrialScreenV2())
+                
+                # Caso C: Fallback
+                else:
+                    from src.tui.trial_screen import TrialScreen
+                    self.push_screen(TrialScreen())
+            except ImportError as e:
+                self.notify(f"Error crítico de módulos: {e}", severity="error")
         else:
-            # Acceso concedido al Arquitecto Maestro
+            # Solo entramos aquí si pruebas_completadas == True
             self.push_screen(MainMenuScreen())
-        
+
         session.close()
 
     def global_observer(self) -> None:
-        """Monitorea reportes de agentes y dispara modales por prioridad."""
-        if self.modal_abierto:
-            return
+        if self.modal_abierto or self.esta_bloqueado(): return
 
         prioridad_agentes = [
             (self.reports["void"], "void", VoidHunterModal),
@@ -112,18 +119,13 @@ class ShadowGrimorio(App):
                 try:
                     with open(path, "r") as f:
                         data = json.load(f)
-
-                    t = str(data.get("timestamp",
-                           data.get("last_check",
-                           data.get("last_purge", ""))))
-
+                    t = str(data.get("timestamp", data.get("last_check", data.get("last_purge", ""))))
                     if t and t != self.last_timestamps[key]:
                         self.last_timestamps[key] = t
                         self.modal_abierto = True
                         self.push_screen(modal_cls(data), callback=self.on_modal_close)
                         return
-                except Exception:
-                    continue
+                except Exception: continue
 
     def on_modal_close(self, _=None) -> None:
         self.modal_abierto = False
@@ -140,30 +142,26 @@ class ShadowGrimorio(App):
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
         yield Footer()
 
-    # --- Acciones de Navegación ---
-
     def action_chat(self) -> None:
+        if self.esta_bloqueado(): return
         from src.tui.chat import ChatScreen
         self.push_screen(ChatScreen())
 
     def action_agentes(self) -> None:
+        if self.esta_bloqueado(): return
         from src.tui.agents_menu import AgentsMenu
         self.push_screen(AgentsMenu())
 
     def action_main_menu(self) -> None:
+        if self.esta_bloqueado(): return
         self.push_screen(MainMenuScreen())
 
     def action_back(self) -> None:
+        if self.esta_bloqueado(): return
         if len(self.screen_stack) > 1:
             self.pop_screen()
             self.modal_abierto = False
 
     async def action_quit(self) -> None:
         self.exit()
-
-if __name__ == "__main__":
-    # Detectamos si es la primera vez basándonos en la existencia de la DB/Usuario
-    primera = not sap.verificar_perfil_existente()
-    app = ShadowGrimorio(es_primera_vez=primera)
-    app.run()
 

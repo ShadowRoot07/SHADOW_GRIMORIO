@@ -1,53 +1,68 @@
-import hashlib
 import time
 from src.database.manager import db
 from src.database.models import Usuario
-from src.utils.hardware import generar_huella_hardware
 
-class TrialsManager:
-    """Orquestador de las Pruebas de Iniciación (Protocolo SAP)."""
+class PhaseOneManager:
+    """Juez mecánico para la Fase 1: Caracteres, Tiempo y Paciencia."""
 
     def __init__(self):
         self.start_time = 0
+        self.challenges = [
+            {"id": 1, "task": "Crea un Hello World en Python.", "max_chars": 30, "min_chars": 10},
+            {"id": 2, "task": "Crea una calculadora básica (suma) en Python.", "max_chars": 60, "min_chars": 15},
+            {"id": 3, "task": "Crea un formulario con input() en Python.", "max_chars": 80, "min_chars": 20},
+            {"id": 4, "task": "Pregunta Web: ¿Qué es un Protocolo? (Respuesta Humana)", "max_chars": 120, "min_chars": 15}
+        ]
 
-    def registrar_inicio_input(self):
+    def registrar_inicio(self):
         self.start_time = time.time()
 
     def es_humano(self, texto: str) -> bool:
-        """Detecta si el input fue pegado (IA/Copy-Paste) por velocidad."""
+        """Evita copy-paste masivo evaluando caracteres por segundo."""
         duracion = time.time() - self.start_time
-        palabras = len(texto.split())
-        # Si escribe más de 150 palabras por minuto, es sospechoso
-        wpm = (palabras / duracion) * 60 if duracion > 0 else 999
-        return wpm < 150
+        # Tolerancia ajustada para TextArea: menos de 0.3s para > 10 chars es bot.
+        if duracion < 0.3 and len(texto.strip()) > 10: return False
+        return True
 
-    def guardar_progreso(self, fase: int, repeticion: int = 0, respuestas_hash: str = ""):
+    def validar_respuesta(self, texto: str, step: int) -> bool:
+        """Valida longitud de caracteres según el desafío."""
+        texto_limpio = texto.strip()
+        ch = next((c for c in self.challenges if c['id'] == step), None)
+        if not ch: return False
+
+        longitud_ok = ch['min_chars'] <= len(texto_limpio) <= ch['max_chars']
+        humano_ok = self.es_humano(texto_limpio)
+
+        return longitud_ok and humano_ok
+
+    def guardar_progreso_db(self, step: int, paciencia: int = 0):
         session = db.get_session()
         user = session.query(Usuario).first()
         if user:
-            user.rango = f"Prueba Fase {fase} (Rep: {repeticion})"
-            # Usaremos un campo temporal o el alias para guardar el estado del bucle
-            # Por ahora, actualizamos el rango para reflejar el progreso
+            user.rango = f"F1_S{step}_P{paciencia}"
             session.commit()
         session.close()
 
-    def finalizar_pruebas(self, k1: str, k2: str, k3: str):
-        """Genera la Super Key y sella el perfil."""
-        from src.logic.identity_matrix import sap
-        super_k = sap.generar_super_key(k1, k2, k3)
-        
+    def obtener_progreso_db(self):
+        session = db.get_session()
+        user = session.query(Usuario).first()
+        status = {"step": 1, "paciencia": 0}
+        if user and user.rango and user.rango.startswith("F1_"):
+            try:
+                parts = user.rango.split("_")
+                status["step"] = int(parts[1][1:])
+                status["paciencia"] = int(parts[2][1:])
+            except: pass
+        session.close()
+        return status
+
+    def finalizar_fase_uno(self):
         session = db.get_session()
         user = session.query(Usuario).first()
         if user:
-            user.pruebas_completadas = True
-            user.rango = "Arquitecto Maestro"
-            user.key_hash_1 = k1
-            user.key_hash_2 = k2
-            user.key_hash_3 = k3
-            user.super_key_hash = super_k
-            user.hw_fingerprint = generar_huella_hardware()
+            user.rango = "F1_COMPLETADA"
             session.commit()
         session.close()
 
-trials = TrialsManager()
+trials_logic = PhaseOneManager()
 
