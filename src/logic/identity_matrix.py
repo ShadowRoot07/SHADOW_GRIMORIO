@@ -103,6 +103,16 @@ class ShadowAccessProtocol:
         finally:
             session.close()
 
+    def tiene_acceso_total(self) -> bool:
+        """Verifica si el portador superó las pruebas SAP y ascendió a Shadow_Coder."""
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            if not user: return False
+            return user.pruebas_completadas and user.rango == "Shadow_Coder"
+        finally:
+            session.close()
+
 # Instancia global del protocolo
 sap = ShadowAccessProtocol()
 

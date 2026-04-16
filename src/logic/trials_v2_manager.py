@@ -68,7 +68,6 @@ class PhaseTwoManager:
             {"q": "¿Cuál es la extensión de un archivo de bytecode en Python?", "options": {"A": ".py", "B": ".pyc", "C": ".exe", "D": ".bin"}, "ans": "B"},
             {"q": "¿Qué es el Event Loop en entornos asíncronos?", "options": {"A": "Un bucle de música", "B": "Mecanismo que gestiona tareas no bloqueantes", "C": "Un error de red", "D": "Un tipo de interfaz"}, "ans": "B"}
         ]
-
     def generar_reto_cifrado(self):
         tipo = random.choice(self.cifrados)
         secreto_base = f"GHOST_{random.randint(1000, 9999)}"
@@ -84,26 +83,29 @@ class PhaseTwoManager:
     def obtener_preguntas_aleatorias(self, k=3):
         return random.sample(self.cuestionario, k)
 
-    def finalizar_fase_dos(self):
-        session = db.get_session()
-        user = session.query(Usuario).first()
-        if user:
-            user.rango = "F2_COMPLETADA"
-            user.pruebas_completadas = True
-            session.commit()
-        session.close()
-
     def inyectar_secreto(self, nombre: str, valor: str):
+        """Usa el DatabaseManager para cifrar y guardar con GHOST_SHELL."""
+        try:
+            db.save_secret(nombre, valor)
+            return True
+        except Exception as e:
+            logger.error(f"Fallo al inyectar secreto {nombre}: {e}")
+            return False
+
+    def finalizar_fase_dos(self):
+        """Eleva el rango del usuario y sella la Fase 2."""
         session = db.get_session()
         try:
-            nuevo = Secreto(nombre=nombre, valor_cifrado=valor)
-            session.merge(nuevo)
-            session.commit()
-            return True
-        except Exception:
-            return False
+            user = session.query(Usuario).first()
+            if user:
+                user.rango = "Shadow_Coder" # Rango superior tras la prueba
+                user.pruebas_completadas = True
+                session.commit()
+                logger.success("🏆 SAP: El portador ha sido validado. Rango: Shadow_Coder.")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error al finalizar Fase 2: {e}")
         finally:
             session.close()
 
 trials_v2_logic = PhaseTwoManager()
-
