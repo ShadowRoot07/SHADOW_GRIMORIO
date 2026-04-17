@@ -20,7 +20,7 @@ class TrialScreenV3(Screen):
                 yield Label("💀 PROTOCOLO SAP: FASE 3 (PRESIÓN)", id="title_v3")
                 yield Label("", id="debug_status")
                 yield Label("", id="q_text")
-                
+
                 with RadioSet(id="options"):
                     yield RadioButton("", id="opt_a")
                     yield RadioButton("", id="opt_b")
@@ -39,20 +39,20 @@ class TrialScreenV3(Screen):
         if self.q_idx < len(self.preguntas):
             q = self.preguntas[self.q_idx]
             self.query_one("#q_text").update(f"[bold white]{q['q']}[/]")
-            
+
             opts = q['options']
             self.query_one("#opt_a").label = f"A) {opts['A']}"
             self.query_one("#opt_b").label = f"B) {opts['B']}"
             self.query_one("#opt_c").label = f"C) {opts['C']}"
             self.query_one("#opt_d").label = f"D) {opts['D']}"
-            
-            # DEBUG DE RESPUESTA
-            self.query_one("#debug_status").update(f"[#444444]DEBUG CORRECTA: {q['ans']}[/]")
-            
+
+            # Limpieza de cualquier rastro previo en el área de estado
+            self.query_one("#debug_status").update("[#1a1a1a]Analizando integridad...[/]")
+
             self.query_one("#options")._selected = None
             self.tiempo = 15
             self.query_one("#timer_bar").progress = 15
-            
+
             if not self.timer_active:
                 self.timer_active = True
                 self.tick()
@@ -66,7 +66,7 @@ class TrialScreenV3(Screen):
             self.set_timer(1, self.tick)
         elif self.tiempo == 0:
             self.timer_active = False
-            self.app.notify("TIEMPO AGOTADO", severity="error")
+            self.app.notify("¡TIEMPO AGOTADO!", severity="error")
             self.q_idx += 1
             self.lanzar_pregunta()
 
@@ -78,7 +78,7 @@ class TrialScreenV3(Screen):
                 self.app.notify("Módulo Validado", severity="success")
             else:
                 self.app.notify("Inconsistencia detectada", severity="error")
-            
+
             self.q_idx += 1
             self.lanzar_pregunta()
         else:
@@ -93,12 +93,42 @@ class TrialScreenV3(Screen):
             self.app.verificar_acceso_shadow()
 
     CSS = """
-    #trial_box_v3 { width: 95%; height: auto; border: double red; padding: 1; background: #080000; }
-    #title_v3 { text-align: center; color: red; text-style: bold; }
-    #debug_status { text-align: center; height: 1; font-size: 70%; }
-    #q_text { margin: 1 0; text-align: center; min-height: 3; }
-    #timer_label { text-align: center; color: red; margin-top: 1; }
-    #options { background: transparent; border: none; }
-    #btn_confirm { width: 100%; margin-top: 1; background: red; }
+    #trial_box_v3 {
+        width: 95%;
+        height: auto;
+        border: double red;
+        padding: 1;
+        background: #080000;
+    }
+    #title_v3 {
+        text-align: center;
+        color: red;
+        text-style: bold;
+    }
+    #debug_status {
+        text-align: center;
+        height: 1;
+        color: #444444;
+        margin-bottom: 1;
+    }
+    #q_text {
+        margin: 1 0;
+        text-align: center;
+        min-height: 3;
+    }
+    #timer_label {
+        text-align: center;
+        color: red;
+        margin-top: 1;
+    }
+    #options {
+        background: transparent;
+        border: none;
+    }
+    #btn_confirm {
+        width: 100%;
+        margin-top: 1;
+        background: red;
+    }
     """
 

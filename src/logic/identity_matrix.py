@@ -53,13 +53,12 @@ No uses Markdown ni texto extra.""",
 }
 
 class ShadowAccessProtocol:
-    """Gestiona el acceso escalonado y las 4 llaves del usuario."""
+    """Gestiona el acceso mediante una Master Key Única vinculada al hardware."""
 
     def __init__(self):
         self.hw_fingerprint = generar_huella_hardware()
 
     def verificar_perfil_existente(self) -> bool:
-        """Comprueba si existe algún usuario en la base de datos."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
@@ -68,43 +67,40 @@ class ShadowAccessProtocol:
             session.close()
 
     def inicializar_usuario_debug(self):
-        """Crea el perfil inicial tras un reset de DB para iniciar el SAP."""
         session = db.get_session()
         try:
             nuevo_usuario = Usuario(
                 alias="ShadowRoot07",
                 rango="Iniciado",
-                pruebas_completadas=False
+                pruebas_completadas=False,
+                hw_fingerprint=self.hw_fingerprint
             )
             session.add(nuevo_usuario)
             session.commit()
-            logger.info("👤 SAP: Perfil de 'Iniciado' materializado con éxito.")
+            logger.info("👤 SAP: Perfil materializado. Esperando validación técnica.")
         except Exception as e:
             session.rollback()
-            logger.error(f"❌ SAP: Error al crear perfil inicial: {e}")
+            logger.error(f"❌ SAP Error: {e}")
         finally:
             session.close()
 
-    def generar_super_key(self, k1: str, k2: str, k3: str) -> str:
-        """La 4ta Llave: La Super Key que orquesta el sistema."""
-        combined = f"{k1}{k2}{k3}".encode()
+    def generar_master_hash(self, key_input: str) -> str:
+        """Crea el hash final mezclando la llave del usuario con el hardware."""
+        combined = f"{key_input}{self.hw_fingerprint}".encode()
         return hashlib.sha512(combined).hexdigest()
 
-    def validar_acceso(self, k2_input: str, k3_input: str) -> bool:
-        """Valida las llaves contra la Super Key guardada."""
+    def validar_acceso(self, key_input: str) -> bool:
+        """Comprueba si la llave ingresada coincide con el hash guardado."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
-            if not user or not user.super_key_hash:
+            if not user or not user.master_key_hash:
                 return False
-
-            test_super_key = self.generar_super_key(user.key_hash_1, k2_input, k3_input)
-            return test_super_key == user.super_key_hash
+            return self.generar_master_hash(key_input) == user.master_key_hash
         finally:
             session.close()
 
     def tiene_acceso_total(self) -> bool:
-        """Verifica si el portador superó las pruebas SAP y ascendió a Shadow_Coder."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
@@ -113,7 +109,6 @@ class ShadowAccessProtocol:
         finally:
             session.close()
 
-# Instancia global del protocolo
 sap = ShadowAccessProtocol()
 
 def obtener_identidad(nombre_agente: str) -> dict:

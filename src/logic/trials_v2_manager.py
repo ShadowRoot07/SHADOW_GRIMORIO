@@ -2,6 +2,7 @@ import random
 import hashlib
 import base64
 import binascii
+from loguru import logger
 from src.database.manager import db
 from src.database.models import Secreto, Usuario
 
@@ -91,21 +92,39 @@ class PhaseTwoManager:
         except Exception as e:
             logger.error(f"Fallo al inyectar secreto {nombre}: {e}")
             return False
-
+    
     def finalizar_fase_dos(self):
-        """Eleva el rango del usuario y sella la Fase 2."""
+        """Eleva el rango del usuario y prepara el sellado de la Master Key."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
             if user:
-                user.rango = "Shadow_Coder" # Rango superior tras la prueba
+                user.rango = "Shadow_Coder"
                 user.pruebas_completadas = True
                 session.commit()
-                logger.success("🏆 SAP: El portador ha sido validado. Rango: Shadow_Coder.")
+                logger.success("🏆 SAP: Evaluación técnica superada. Rango: Shadow_Coder.")
         except Exception as e:
             session.rollback()
             logger.error(f"Error al finalizar Fase 2: {e}")
         finally:
             session.close()
+
+    def sellar_master_key(self, raw_key: str):
+        """Sella la llave definitiva en la base de datos."""
+        from src.logic.identity_matrix import sap
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            if user:
+                user.master_key_hash = sap.generar_master_hash(raw_key)
+                session.commit()
+                logger.success("🔐 SAP: Master Key sellada criptográficamente.")
+                return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error al sellar Master Key: {e}")
+        finally:
+            session.close()
+        return False
 
 trials_v2_logic = PhaseTwoManager()

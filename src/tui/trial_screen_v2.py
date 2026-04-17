@@ -34,8 +34,7 @@ class TrialScreenV2(Screen):
             self.reto = trials_v2_logic.generar_reto_cifrado()
             msg = f"DESCIFRADO ({self.sub_step}/3)\nAlgoritmo: [cyan]{self.reto['tipo']}[/]\nCadena: [yellow]{self.reto['target']}[/]"
             inst.update(msg)
-            # DEBUG DE DESARROLLO
-            status.update(f"[#444444]DEBUG SOLUCIÓN: {self.reto['solucion']}[/]")
+            status.update("[#666666]Sincronizando llaves de cifrado...[/]")
         else:
             secretos = ["BASE_DE_DATOS_URL", "GROQ_TOKEN", "GITHUB_TOKEN"]
             msg = f"INYECCIÓN ({self.sub_step}/3)\nConfigurando: [magenta]{secretos[self.sub_step-1]}[/]"
@@ -70,11 +69,39 @@ class TrialScreenV2(Screen):
                 self.app.notify("Fallo en la persistencia de la bóveda.", severity="error")
 
     CSS = """
-    #trial_box_v2 { width: 95%; height: auto; border: double #8A2BE2; padding: 1; background: #050505; }
-    #title_v2 { text-align: center; color: #8A2BE2; text-style: bold; }
-    #status_line { text-align: center; margin-bottom: 1; height: 1; font-size: 80%; }
-    #instructions { margin-bottom: 1; text-align: center; height: 4; }
-    #input_v2 { height: 5; border: solid #333; background: #000; color: #8A2BE2; }
-    #btn_next { width: 100%; margin-top: 1; background: #8A2BE2; }
+    #trial_box_v2 {
+        width: 95%;
+        height: auto;
+        border: double #8A2BE2;
+        padding: 1;
+        background: #050505;
+    }
+    #title_v2 {
+        text-align: center;
+        color: #8A2BE2;
+        text-style: bold;
+    }
+    #status_line {
+        text-align: center;
+        margin-bottom: 1;
+        height: 1;
+        color: #666666;
+    }
+    #instructions {
+        margin-bottom: 1;
+        text-align: center;
+        height: 4;
+    }
+    #input_v2 {
+        height: 5;
+        border: solid #333;
+        background: #000;
+        color: #8A2BE2;
+    }
+    #btn_next {
+        width: 100%;
+        margin-top: 1;
+        background: #8A2BE2;
+    }
     """
 

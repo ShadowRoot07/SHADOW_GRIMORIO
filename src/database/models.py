@@ -11,22 +11,17 @@ class Secreto(Base):
     valor_cifrado = Column(Text, nullable=False)
 
 class Usuario(Base):
-    """Perfil del programador con Protocolo SAP."""
+    """Perfil del programador con Protocolo SAP de Llave Única."""
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
     alias = Column(String, default="ShadowRoot07")
-    rango = Column(String, default="Iniciado") # Usado para trackear el sub-paso de la prueba
-    
+    rango = Column(String, default="Iniciado") 
+
     # --- Protocolo de Acceso Shadow (SAP) ---
     pruebas_completadas = Column(Boolean, default=False)
 
-    # Hashes de seguridad
-    key_hash_1 = Column(String, nullable=True)
-    key_hash_2 = Column(String, nullable=True)
-    key_hash_3 = Column(String, nullable=True)
-
-    # El sello final
-    super_key_hash = Column(String, nullable=True)
+    # El sello final: Master Key única vinculada al Hardware
+    master_key_hash = Column(String, nullable=True)
     hw_fingerprint = Column(String, nullable=True)
 
 class Conocimiento(Base):

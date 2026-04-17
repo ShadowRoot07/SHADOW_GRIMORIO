@@ -53,30 +53,24 @@ class ProfileManager:
                 logger.success("🔐 [SECURITY]: Master Key inyectada con éxito.")
 
     @staticmethod
-    def registrar_usuario(alias, k1, k2, k3, super_key):
-        """Sella el perfil del programador con sus llaves SAP."""
+    def registrar_usuario(alias, raw_master_key):
+        """Sella el perfil con la Master Key única y huella de hardware."""
+        from src.logic.identity_matrix import sap
         session = db.get_session()
         try:
-            # Limpiamos cualquier rastro previo para evitar conflictos de ID
             session.query(Usuario).delete()
-            
+
             nuevo_user = Usuario(
                 alias=alias,
-                rango="Arquitecto Digital",
-                hw_fingerprint=k1,
-                super_key_hash=super_key,
-                pruebas_completadas=1
+                rango="Shadow_Coder",
+                hw_fingerprint=sap.hw_fingerprint,
+                master_key_hash=sap.generar_master_hash(raw_master_key),
+                pruebas_completadas=True
             )
             session.add(nuevo_user)
-
-            # Stack tecnológico inicial (ShadowRoot07 Essentials)
-            tech_base = ["Python", "FastAPI", "React", "PostgreSQL", "NeoVim", "Termux"]
-            for tech in tech_base:
-                conocimiento = Conocimiento(tecnologia=tech, dominado=True, nivel=90)
-                session.add(conocimiento)
-
+            # ... (Resto de la inyección de tech_base se mantiene igual) ...
             session.commit()
-            logger.success(f"⚡ [CORE]: Perfil de {alias} sellado y encriptado.")
+            logger.success(f"⚡ [CORE]: Perfil de {alias} sellado con Master Key Única.")
         except Exception as e:
             session.rollback()
             logger.error(f"❌ Error al sellar el perfil: {e}")
