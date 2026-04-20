@@ -14,19 +14,16 @@ class DatabaseManager:
         self.SessionLocal = None
 
     def init_db(self, drop_all: bool = False):
-        """
-        Materializa las tablas. 
-        Si drop_all es True, borra todo (útil para resetear el Protocolo SAP).
-        """
+        """Materializa las tablas y gestiona la integridad del esquema."""
         try:
             if not self.engine:
                 self.engine = create_engine(self.db_url)
                 self.SessionLocal = sessionmaker(
-                    autocommit=False, 
-                    autoflush=False, 
+                    autocommit=False,
+                    autoflush=False,
                     bind=self.engine
                 )
-            
+
             if drop_all:
                 logger.warning("⚠️ DATABASE: Ejecutando purga total de tablas...")
                 Base.metadata.drop_all(bind=self.engine)
@@ -37,7 +34,7 @@ class DatabaseManager:
             logger.error(f"❌ DATABASE: Fallo al materializar tablas: {e}")
 
     def get_session(self):
-        if not self.SessionLocal: 
+        if not self.SessionLocal:
             self.init_db()
         return self.SessionLocal()
 
@@ -49,19 +46,15 @@ class DatabaseManager:
 
         session = self.get_session()
         try:
-            # Cifrar el valor usando el protocolo Ghost
             ruido = ghost.obfuscate_data(valor_plano)
-
-            # Buscar si ya existe para actualizarlo o crearlo
             secreto = session.query(Secreto).filter_by(nombre=nombre).first()
             if secreto:
                 secreto.valor_cifrado = ruido
             else:
                 secreto = Secreto(nombre=nombre, valor_cifrado=ruido)
                 session.add(secreto)
-
             session.commit()
-            logger.success(f"🔒 GHOST_SHELL: Secreto '{nombre}' materializado en la bóveda.")
+            logger.success(f"🔒 GHOST_SHELL: Secreto '{nombre}' materializado.")
         except Exception as e:
             session.rollback()
             logger.error(f"❌ DATABASE: Error al guardar secreto: {e}")
@@ -73,11 +66,7 @@ class DatabaseManager:
         session = self.get_session()
         try:
             secreto = session.query(Secreto).filter_by(nombre=nombre).first()
-            if not secreto: 
-                return ""
-
-            # Revelar el dato usando Ghost
-            return ghost.reveal_data(secreto.valor_cifrado)
+            return ghost.reveal_data(secreto.valor_cifrado) if secreto else ""
         except Exception as e:
             logger.error(f"❌ DATABASE: Error al revelar secreto: {e}")
             return ""

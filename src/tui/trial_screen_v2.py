@@ -68,6 +68,10 @@ class TrialScreenV2(Screen):
             else:
                 self.app.notify("Fallo en la persistencia de la bóveda.", severity="error")
 
+    def on_key(self, event):
+        if event.key == "f1":
+            return
+
     CSS = """
     #trial_box_v2 {
         width: 95%;

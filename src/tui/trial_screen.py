@@ -78,6 +78,9 @@ class TrialScreen(Screen):
         pass
 
     def on_key(self, event):
+        if event.key == "f1":
+            # Dejamos que la App maneje el bypass
+            return
         if event.key == "escape":
             event.prevent_default()
             self.app.notify("Acceso denegado: Completa las pruebas primero.", severity="error")

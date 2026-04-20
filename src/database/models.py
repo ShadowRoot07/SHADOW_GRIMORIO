@@ -15,8 +15,8 @@ class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
     alias = Column(String, default="ShadowRoot07")
-    rango = Column(String, default="Iniciado") 
-
+    rango = Column(String, default="Iniciado")
+    
     # --- Protocolo de Acceso Shadow (SAP) ---
     pruebas_completadas = Column(Boolean, default=False)
 

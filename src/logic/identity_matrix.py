@@ -23,7 +23,7 @@ No uses Markdown ni texto extra.""",
         "trait": "Cínico y Vigilante."
     },
     "WATCHDOG": {
-        "prompt": "Eres el supervisor de calidad. Tu misión es validar que el código generado por otros agentes sea válido y no tenga errores de sintaxis.",
+        "prompt": "Eres the supervisor de calidad. Tu misión es validar que el código generado por otros agentes sea válido y no tenga errores de sintaxis.",
         "trait": "Analítico y Estricto."
     },
     "BRUMA_SYNC": {
@@ -57,6 +57,9 @@ class ShadowAccessProtocol:
 
     def __init__(self):
         self.hw_fingerprint = generar_huella_hardware()
+        self.__root_secret = "SpongeBob_SquarePants"
+        # Agregamos esta bandera para el estado de bypass en sesión
+        self.root_bypass_active = False
 
     def verificar_perfil_existente(self) -> bool:
         session = db.get_session()
@@ -84,18 +87,45 @@ class ShadowAccessProtocol:
         finally:
             session.close()
 
+    def activar_bypass_root(self, input_key: str) -> bool:
+        """Activa el acceso total si la llave coincide con el secreto del Arquitecto."""
+        if input_key == self.__root_secret:
+            self.root_bypass_active = True
+            session = db.get_session()
+            try:
+                user = session.query(Usuario).first()
+                if user:
+                    user.pruebas_completadas = True
+                    user.rango = "Shadow_Coder"
+                    user.master_key_hash = self.generar_master_hash(self.__root_secret)
+                    session.commit()
+                    logger.warning("🔓 BYPASS: El Arquitecto ha tomado control total.")
+                    return True
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error en bypass Root: {e}")
+            finally:
+                session.close()
+        return False
+
     def generar_master_hash(self, key_input: str) -> str:
         """Crea el hash final mezclando la llave del usuario con el hardware."""
         combined = f"{key_input}{self.hw_fingerprint}".encode()
         return hashlib.sha512(combined).hexdigest()
 
-    def validar_acceso(self, key_input: str) -> bool:
-        """Comprueba si la llave ingresada coincide con el hash guardado."""
+    def validar_acceso(self, k2: str, k3: str) -> bool:
+        """Valida las llaves del ritual o el bypass root."""
+        if self.root_bypass_active:
+            return True
+            
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
             if not user or not user.master_key_hash:
                 return False
+            
+            # Combinamos k2 y k3 para formar la llave de entrada
+            key_input = f"{k2}{k3}"
             return self.generar_master_hash(key_input) == user.master_key_hash
         finally:
             session.close()

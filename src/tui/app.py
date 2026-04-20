@@ -3,6 +3,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static, Label
 from textual.containers import Container, Vertical, Center
+from textual.events import Key
 
 from src.logic.config import config
 from src.tui.themes import THEMES
@@ -14,6 +15,7 @@ from src.database.models import Usuario
 from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
 from src.logic.identity_matrix import sap
+from src.tui.bypass_modal import BypassRootModal # Importar el nuevo modal
 
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
@@ -26,6 +28,7 @@ class ShadowGrimorio(App):
 
     BINDINGS = [
         ("q", "quit", "Salir"),
+        ("f1", "bypass_root", "Bypass"), # Binding global de F1
         ("g", "agentes", "Agentes"),
         ("c", "chat", "Oráculo"),
         ("t", "next_theme", "Tema"),
@@ -59,16 +62,25 @@ class ShadowGrimorio(App):
         self.verificar_acceso_shadow()
         self.set_interval(2.0, self.global_observer)
 
+    def action_bypass_root(self) -> None:
+        """Invoca el modal de bypass desde cualquier parte."""
+        def check_bypass(success: bool):
+            if success:
+                self.verificar_acceso_shadow()
+
+        self.push_screen(BypassRootModal(), callback=check_bypass)
+
     def esta_bloqueado(self) -> bool:
-        """Verifica si el acceso está restringido por pruebas pendientes."""
-        session = db.get_session()
-        user = session.query(Usuario).first()
-        # Si no hay usuario o las pruebas no están marcadas como completadas
-        bloqueado = user is None or not user.pruebas_completadas
-        session.close()
-        return bloqueado
+        return not sap.tiene_acceso_total()
 
     def verificar_acceso_shadow(self) -> None:
+        if sap.tiene_acceso_total():
+            # Si el bypass fue exitoso, limpiamos todo y vamos al menú
+            while len(self.screen_stack) > 1:
+                self.pop_screen()
+            self.push_screen(MainMenuScreen())
+            return
+
         if not sap.verificar_perfil_existente():
             sap.inicializar_usuario_debug()
             self.push_screen(InitWizard())
@@ -77,34 +89,23 @@ class ShadowGrimorio(App):
         session = db.get_session()
         user = session.query(Usuario).first()
 
-        # Si no hay usuario o las pruebas globales no están en True
         if user and not user.pruebas_completadas:
             try:
-                # Caso A: Recién iniciado o en medio de Fase 1
                 if user.rango == "Iniciado" or user.rango.startswith("F1_S"):
                     from src.tui.trial_screen import TrialScreen
                     self.push_screen(TrialScreen())
-                
-                # Caso B: Fase 1 lista, saltar a Fase 2 (Aquí estaba el bug)
                 elif user.rango == "F1_COMPLETADA" or user.rango.startswith("F2_"):
                     from src.tui.trial_screen_v2 import TrialScreenV2
                     self.push_screen(TrialScreenV2())
-                
-                # Caso C: Fallback
                 else:
                     from src.tui.trial_screen import TrialScreen
                     self.push_screen(TrialScreen())
             except ImportError as e:
                 self.notify(f"Error crítico de módulos: {e}", severity="error")
-        else:
-            # Solo entramos aquí si pruebas_completadas == True
-            self.push_screen(MainMenuScreen())
-
         session.close()
 
     def global_observer(self) -> None:
         if self.modal_abierto or self.esta_bloqueado(): return
-
         prioridad_agentes = [
             (self.reports["void"], "void", VoidHunterModal),
             (self.reports["watchdog"], "watchdog", WatchdogErrorModal),
@@ -113,7 +114,6 @@ class ShadowGrimorio(App):
             (self.reports["janitor"], "janitor", JanitorAuditModal),
             (self.reports["ghost"], "ghost", GhostWritingModal),
         ]
-
         for path, key, modal_cls in prioridad_agentes:
             if path.exists():
                 try:
