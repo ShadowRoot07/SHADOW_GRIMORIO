@@ -21,7 +21,7 @@ class TrialScreen(Screen):
                 yield Label("", id="char_limit_msg")
                 yield TextArea(id="trial_input", show_line_numbers=True)
                 yield Label("Caracteres: 0", id="char_counter")
-                yield Button("VALIDAR ENTRADA", variant="primary", id="btn_validar")
+                yield Button("VALIDAR ENTRADA", variant="primary", id="btn_trial_f1")
 
     def on_mount(self):
         self.actualizar_desafio()
@@ -42,7 +42,6 @@ class TrialScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed):
         val = self.query_one("#trial_input").text
-
         if trials_logic.validar_respuesta(val, self.current_step):
             # Lógica de paciencia para el último paso
             if self.current_step == 4 and self.patience_count < 2:
@@ -103,6 +102,6 @@ class TrialScreen(Screen):
         color: #00FF00;
     }
     #char_counter { text-align: right; color: #00AA00; margin-top: 1; }
-    #btn_validar { width: 100%; margin-top: 1; }
+    #btn_trial_f1 { width: 100%; margin-top: 1; }
     """
 

@@ -73,8 +73,9 @@ class WatchdogErrorModal(ModalScreen):
         self.query_one("#wd_title").styles.color = "#FF3131"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "close_wd":
-            self.app.pop_screen()
+        if event.button.id == "btn_close_watchdog": # ID más específico
+            self.dismiss()
+
 
     CSS = """
     #watchdog_modal {
@@ -95,7 +96,7 @@ class WatchdogErrorModal(ModalScreen):
     }
     #wd_body { color: #FF9999; }
     #wd_footer { grid-size: 1; height: 3; margin-top: 1; }
-    #close_wd { width: 100%; border: none; }
+    #btn_close_watchdog { width: 100%; border: none; background: #FF0000; }
     """
 
 
@@ -331,7 +332,7 @@ class VoidHunterModal(ModalScreen):
                     yield Label("El Grimorio está optimizado. Sin vacíos.", id="vd_empty")
 
             with Grid(id="vd_footer"):
-                yield Button("ENTENDIDO", id="close_vd")
+                yield Button("ENTENDIDO", id="btn_close_void") # Agregado ID explícito
 
     def on_mount(self) -> None:
         c = self.query_one("#void_modal")
@@ -339,7 +340,8 @@ class VoidHunterModal(ModalScreen):
         c.styles.background = "#00050a"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss()
+        if event.button.id == "btn_close_void":
+            self.dismiss()
 
     CSS = """
     #void_modal { width: 90%; height: 80%; align: center middle; padding: 1; }
@@ -348,6 +350,6 @@ class VoidHunterModal(ModalScreen):
     .finding_card { margin-bottom: 1; padding: 0 1; }
     .separator { color: #002244; margin: 0; }
     #vd_footer { grid-size: 1; height: 3; margin-top: 1; }
-    #close_vd { width: 100%; background: #0047AB; color: white; border: none; }
+    #btn_close_void { width: 100%; background: #0047AB; color: white; border: none; }
     """
 
