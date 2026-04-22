@@ -28,10 +28,11 @@ class BypassRootModal(ModalScreen[bool]):
     def ejecutar_bypass(self):
         llave = self.query_one("#bypass_input").value
         if sap.activar_bypass_root(llave):
-            self.app.notify("BYPASS EXITOSO: Perfil elevado a Shadow_Coder.", severity="success")
+            self.app.notify("ACCESO ARQUITECTO CONFIRMADO", severity="success")
+            # Devolvemos True para que el callback en app.py ejecute verificar_acceso_shadow()
             self.dismiss(True)
         else:
-            self.app.notify("LLAVE INCORRECTA: Protocolo de seguridad mantenido.", severity="error")
+            self.app.notify("ERROR: Llave de bypass inválida.", severity="error")
             self.dismiss(False)
 
     CSS = """

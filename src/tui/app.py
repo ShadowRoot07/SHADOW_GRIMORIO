@@ -15,7 +15,7 @@ from src.database.models import Usuario
 from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
 from src.logic.identity_matrix import sap
-from src.tui.bypass_modal import BypassRootModal # Importar el nuevo modal
+from src.tui.bypass_modal import BypassRootModal 
 
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
@@ -28,7 +28,7 @@ class ShadowGrimorio(App):
 
     BINDINGS = [
         ("q", "quit", "Salir"),
-        ("f1", "bypass_root", "Bypass"), # Binding global de F1
+        ("f1", "bypass_root", "Bypass"), 
         ("g", "agentes", "Agentes"),
         ("c", "chat", "Oráculo"),
         ("t", "next_theme", "Tema"),
@@ -63,7 +63,6 @@ class ShadowGrimorio(App):
         self.set_interval(2.0, self.global_observer)
 
     def action_bypass_root(self) -> None:
-        """Invoca el modal de bypass desde cualquier parte."""
         def check_bypass(success: bool):
             if success:
                 self.verificar_acceso_shadow()
@@ -75,10 +74,11 @@ class ShadowGrimorio(App):
 
     def verificar_acceso_shadow(self) -> None:
         if sap.tiene_acceso_total():
-            # Si el bypass fue exitoso, limpiamos todo y vamos al menú
             while len(self.screen_stack) > 1:
                 self.pop_screen()
-            self.push_screen(MainMenuScreen())
+
+            if not isinstance(self.screen, MainMenuScreen):
+                self.push_screen(MainMenuScreen())
             return
 
         if not sap.verificar_perfil_existente():
@@ -87,10 +87,9 @@ class ShadowGrimorio(App):
             return
 
         session = db.get_session()
-        user = session.query(Usuario).first()
-
-        if user and not user.pruebas_completadas:
-            try:
+        try:
+            user = session.query(Usuario).first()
+            if user and not user.pruebas_completadas:
                 if user.rango == "Iniciado" or user.rango.startswith("F1_S"):
                     from src.tui.trial_screen import TrialScreen
                     self.push_screen(TrialScreen())
@@ -100,9 +99,8 @@ class ShadowGrimorio(App):
                 else:
                     from src.tui.trial_screen import TrialScreen
                     self.push_screen(TrialScreen())
-            except ImportError as e:
-                self.notify(f"Error crítico de módulos: {e}", severity="error")
-        session.close()
+        finally:
+            session.close()
 
     def global_observer(self) -> None:
         if self.modal_abierto or self.esta_bloqueado(): return

@@ -58,7 +58,6 @@ class ShadowAccessProtocol:
     def __init__(self):
         self.hw_fingerprint = generar_huella_hardware()
         self.__root_secret = "SpongeBob_SquarePants"
-        # Agregamos esta bandera para el estado de bypass en sesión
         self.root_bypass_active = False
 
     def verificar_perfil_existente(self) -> bool:
@@ -109,33 +108,41 @@ class ShadowAccessProtocol:
         return False
 
     def generar_master_hash(self, key_input: str) -> str:
-        """Crea el hash final mezclando la llave del usuario con el hardware."""
         combined = f"{key_input}{self.hw_fingerprint}".encode()
         return hashlib.sha512(combined).hexdigest()
 
     def validar_acceso(self, k2: str, k3: str) -> bool:
         """Valida las llaves del ritual o el bypass root."""
-        if self.root_bypass_active:
+        # 1. Prioridad: Bypass en memoria o Rango en DB
+        if self.root_bypass_active or self.tiene_acceso_total():
             return True
-            
+
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
             if not user or not user.master_key_hash:
                 return False
-            
-            # Combinamos k2 y k3 para formar la llave de entrada
+
             key_input = f"{k2}{k3}"
             return self.generar_master_hash(key_input) == user.master_key_hash
         finally:
             session.close()
 
     def tiene_acceso_total(self) -> bool:
+        """Verifica si el usuario tiene privilegios elevados (Persistente)."""
+        if self.root_bypass_active:
+            return True
+            
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
-            if not user: return False
-            return user.pruebas_completadas and user.rango == "Shadow_Coder"
+            if not user: 
+                return False
+            # Si el usuario ya es Shadow_Coder en DB, sincronizamos la memoria
+            if user.pruebas_completadas and user.rango == "Shadow_Coder":
+                self.root_bypass_active = True
+                return True
+            return False
         finally:
             session.close()
 
@@ -147,4 +154,3 @@ def obtener_identidad(nombre_agente: str) -> dict:
         "prompt": "Eres un agente autónomo del enjambre Shadow.",
         "trait": "Funcional."
     })
-
