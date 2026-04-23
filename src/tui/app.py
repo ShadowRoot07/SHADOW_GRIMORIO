@@ -65,6 +65,8 @@ class ShadowGrimorio(App):
     def action_bypass_root(self) -> None:
         def check_bypass(success: bool):
             if success:
+                # Forzamos la actualización inmediata del estado
+                self.app.notify("🔄 RECONECTANDO MATRIZ...", severity="info")
                 self.verificar_acceso_shadow()
 
         self.push_screen(BypassRootModal(), callback=check_bypass)
@@ -73,12 +75,15 @@ class ShadowGrimorio(App):
         return not sap.tiene_acceso_total()
 
     def verificar_acceso_shadow(self) -> None:
-        if sap.tiene_acceso_total():
+        """Sincroniza el estado de la DB con la UI de forma atómica."""
+        acceso_total = sap.tiene_acceso_total()
+
+        if acceso_total:
             while len(self.screen_stack) > 1:
                 self.pop_screen()
 
             if not isinstance(self.screen, MainMenuScreen):
-                self.push_screen(MainMenuScreen())
+                self.switch_screen(MainMenuScreen())
             return
 
         if not sap.verificar_perfil_existente():
@@ -90,17 +95,20 @@ class ShadowGrimorio(App):
         try:
             user = session.query(Usuario).first()
             if user and not user.pruebas_completadas:
-                if user.rango == "Iniciado" or user.rango.startswith("F1_S"):
+                current_rango = user.rango
+
+                if current_rango == "Iniciado" or current_rango.startswith("F1_S"):
                     from src.tui.trial_screen import TrialScreen
-                    self.push_screen(TrialScreen())
-                elif user.rango == "F1_COMPLETADA" or user.rango.startswith("F2_"):
+                    if not isinstance(self.screen, TrialScreen):
+                        self.push_screen(TrialScreen())
+                elif current_rango == "F1_COMPLETADA" or current_rango.startswith("F2_"):
                     from src.tui.trial_screen_v2 import TrialScreenV2
-                    self.push_screen(TrialScreenV2())
-                else:
-                    from src.tui.trial_screen import TrialScreen
-                    self.push_screen(TrialScreen())
+                    if not isinstance(self.screen, TrialScreenV2):
+                        self.push_screen(TrialScreenV2())
         finally:
             session.close()
+        # LA LÍNEA DEL MODAL FUE ELIMINADA DE AQUÍ
+
 
     def global_observer(self) -> None:
         if self.modal_abierto or self.esta_bloqueado(): return

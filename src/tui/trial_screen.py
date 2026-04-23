@@ -4,15 +4,25 @@ from textual.widgets import Button, Label, TextArea
 from textual.containers import Vertical, Center
 from src.logic.trials_manager import trials_logic
 from src.logic.utils import limpiar_secuencias_ansi
+from src.logic.identity_matrix import sap # IMPORTANTE
 
 class TrialScreen(Screen):
     """Pantalla de bloqueo para las Pruebas de Iniciación (Fase 1)."""
 
     def __init__(self):
         super().__init__()
+        # Forzamos refresco de DB al instanciar
         progreso = trials_logic.obtener_progreso_db()
         self.current_step = progreso["step"]
         self.patience_count = progreso["paciencia"]
+
+    def on_focus(self) -> None:
+        """Verifica si el bypass se activó mientras esta pantalla estaba abierta."""
+        if sap.tiene_acceso_total():
+            self.app.notify("Sincronización Root Detectada", severity="success")
+            self.dismiss() # Se cierra a sí misma
+            if hasattr(self.app, "verificar_acceso_shadow"):
+                self.app.verificar_acceso_shadow()
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -28,6 +38,11 @@ class TrialScreen(Screen):
         self.actualizar_desafio()
 
     def actualizar_desafio(self):
+        # Doble check de seguridad por si hubo bypass manual
+        if sap.tiene_acceso_total():
+            self.finalizar_fase_actual()
+            return
+
         if self.current_step > len(trials_logic.challenges):
             self.finalizar_fase_actual()
             return
@@ -39,14 +54,17 @@ class TrialScreen(Screen):
         trials_logic.registrar_inicio()
 
     def on_text_area_changed(self, event: TextArea.Changed):
-        # Limpiamos visualmente el conteo
         texto_real = limpiar_secuencias_ansi(event.text_area.text)
         self.query_one("#char_counter").update(f"Caracteres: {len(texto_real)}")
 
     def on_button_pressed(self, event: Button.Pressed):
+        # Check de emergencia antes de validar
+        if sap.tiene_acceso_total():
+            self.finalizar_fase_actual()
+            return
+
         val = self.query_one("#trial_input").text
         if trials_logic.validar_respuesta(val, self.current_step):
-            # Lógica de paciencia para el último paso
             if self.current_step == 4 and self.patience_count < 2:
                 self.patience_count += 1
                 self.app.notify(f"Sincronización: {self.patience_count}/3", severity="warning")
@@ -65,14 +83,12 @@ class TrialScreen(Screen):
 
     def finalizar_fase_actual(self):
         """Cierra la fase actual y fuerza a la App a evaluar la siguiente fase."""
-        trials_logic.finalizar_fase_uno()
-        self.app.notify("Fase 1 completada. Iniciando Fase 2...", severity="success")
-        
-        # Primero quitamos esta pantalla
+        if not sap.tiene_acceso_total():
+            trials_logic.finalizar_fase_uno()
+            self.app.notify("Fase 1 completada. Iniciando Fase 2...", severity="success")
+
         self.app.pop_screen()
-        
-        # TRIGGER CRÍTICO: Llamamos al método de la App principal para que 
-        # detecte el rango 'F1_COMPLETADA' y lance la TrialScreenV2
+
         if hasattr(self.app, "verificar_acceso_shadow"):
             self.app.verificar_acceso_shadow()
 
@@ -81,11 +97,14 @@ class TrialScreen(Screen):
 
     def on_key(self, event):
         if event.key == "f1":
-            # Dejamos que la App maneje el bypass
             return
         if event.key == "escape":
             event.prevent_default()
-            self.app.notify("Acceso denegado: Completa las pruebas primero.", severity="error")
+            # Si por alguna razón escapó al check, verificamos de nuevo
+            if sap.tiene_acceso_total():
+                self.dismiss()
+            else:
+                self.app.notify("Acceso denegado: Completa las pruebas primero.", severity="error")
 
     CSS = """
     #trial_box {
