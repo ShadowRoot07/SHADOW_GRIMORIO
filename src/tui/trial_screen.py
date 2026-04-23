@@ -3,6 +3,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Label, TextArea
 from textual.containers import Vertical, Center
 from src.logic.trials_manager import trials_logic
+from src.logic.utils import limpiar_secuencias_ansi
 
 class TrialScreen(Screen):
     """Pantalla de bloqueo para las Pruebas de Iniciación (Fase 1)."""
@@ -38,7 +39,9 @@ class TrialScreen(Screen):
         trials_logic.registrar_inicio()
 
     def on_text_area_changed(self, event: TextArea.Changed):
-        self.query_one("#char_counter").update(f"Caracteres: {len(event.text_area.text)}")
+        # Limpiamos visualmente el conteo
+        texto_real = limpiar_secuencias_ansi(event.text_area.text)
+        self.query_one("#char_counter").update(f"Caracteres: {len(texto_real)}")
 
     def on_button_pressed(self, event: Button.Pressed):
         val = self.query_one("#trial_input").text

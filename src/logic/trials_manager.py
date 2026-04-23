@@ -1,6 +1,7 @@
 import time
 from src.database.manager import db
 from src.database.models import Usuario
+from src.logic.utils import limpiar_secuencias_ansi # Importamos el filtro
 
 class PhaseOneManager:
     """Juez mecánico para la Fase 1: Caracteres, Tiempo y Paciencia."""
@@ -25,11 +26,15 @@ class PhaseOneManager:
         return True
 
     def validar_respuesta(self, texto: str, step: int) -> bool:
-        """Valida longitud de caracteres según el desafío."""
-        texto_limpio = texto.strip()
+        """Valida longitud de caracteres tras limpiar basura de la terminal."""
+        # APLICAMOS EL FILTRO AQUÍ:
+        texto_puro = limpiar_secuencias_ansi(texto)
+        texto_limpio = texto_puro.strip()
+        
         ch = next((c for c in self.challenges if c['id'] == step), None)
         if not ch: return False
 
+        # El conteo ahora es real, sin bytes fantasma de Termux
         longitud_ok = ch['min_chars'] <= len(texto_limpio) <= ch['max_chars']
         humano_ok = self.es_humano(texto_limpio)
 
