@@ -87,9 +87,8 @@ class ShadowAccessProtocol:
             session.close()
 
     def activar_bypass_root(self, input_key: str) -> bool:
-        """Activa el acceso total si la llave coincide con el secreto del Arquitecto."""
+        """Activa el acceso total sincronizando memoria y DB."""
         if input_key == self.__root_secret:
-            self.root_bypass_active = True
             session = db.get_session()
             try:
                 user = session.query(Usuario).first()
@@ -98,6 +97,8 @@ class ShadowAccessProtocol:
                     user.rango = "Shadow_Coder"
                     user.master_key_hash = self.generar_master_hash(self.__root_secret)
                     session.commit()
+                    # Sincronizamos la memoria inmediatamente
+                    self.root_bypass_active = True 
                     logger.warning("🔓 BYPASS: El Arquitecto ha tomado control total.")
                     return True
             except Exception as e:
@@ -106,6 +107,34 @@ class ShadowAccessProtocol:
             finally:
                 session.close()
         return False
+
+    def tiene_acceso_total(self) -> bool:
+        """Autoridad única para determinar si el sistema está desbloqueado."""
+        if self.root_bypass_active:
+            return True
+
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            if not user:
+                return False
+            
+            # Si en DB ya es Shadow_Coder, actualizamos el flag de memoria
+            if user.pruebas_completadas and user.rango == "Shadow_Coder":
+                self.root_bypass_active = True
+                return True
+            return False
+        finally:
+            session.close()
+
+    def obtener_rango_actual(self) -> str:
+        """Nuevo método auxiliar para evitar que la TUI consulte la DB directamente."""
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            return user.rango if user else "Iniciado"
+        finally:
+            session.close()
 
     def generar_master_hash(self, key_input: str) -> str:
         combined = f"{key_input}{self.hw_fingerprint}".encode()
@@ -128,23 +157,6 @@ class ShadowAccessProtocol:
         finally:
             session.close()
 
-    def tiene_acceso_total(self) -> bool:
-        """Verifica si el usuario tiene privilegios elevados (Persistente)."""
-        if self.root_bypass_active:
-            return True
-            
-        session = db.get_session()
-        try:
-            user = session.query(Usuario).first()
-            if not user: 
-                return False
-            # Si el usuario ya es Shadow_Coder en DB, sincronizamos la memoria
-            if user.pruebas_completadas and user.rango == "Shadow_Coder":
-                self.root_bypass_active = True
-                return True
-            return False
-        finally:
-            session.close()
 
 sap = ShadowAccessProtocol()
 

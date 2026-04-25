@@ -168,6 +168,10 @@ class ShadowGrimorio(App):
             self.pop_screen()
             self.modal_abierto = False
 
+    
     async def action_quit(self) -> None:
-        self.exit()
-
+        """Cierre controlado desde la interfaz."""
+        self.app.notify("Desconectando de la Matriz...", severity="warning")
+        self.exit() 
+        # Al llamar a self.exit(), main.py caerá en el bloque 'finally' 
+        # y ejecutará el shutdown de la base de datos.
