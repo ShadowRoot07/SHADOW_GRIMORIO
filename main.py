@@ -2,7 +2,8 @@ import sys
 import threading
 import time
 import signal
-from src.logic.config import config
+from pathlib import Path
+from src.logic.config import config, BASE_DIR
 from src.logic.ghost_shell import init_ghost, ghost
 from src.logic.survival_protocol import survival
 from src.logic.init_profile import ProfileManager
@@ -11,17 +12,14 @@ from src.tui.app import ShadowGrimorio
 from loguru import logger
 
 def graceful_shutdown(signum, frame):
-    """Captura señales de interrupción para cerrar todo ordenadamente."""
-    logger.warning(f"⚠️ SISTEMA: Recibida señal {signum}. Iniciando purga de seguridad...")
     if ghost:
         ghost.burn_session()
     db.shutdown()
     logger.info("--- 💀 SHADOW_GRIMORIO FUERA DE LÍNEA (EXIT EXITOSO) 💀 ---")
     sys.exit(0)
 
-# Registrar señales de cierre
-signal.signal(signal.SIGINT, graceful_shutdown)  # Ctrl+C
-signal.signal(signal.SIGTERM, graceful_shutdown) # Kill comando
+signal.signal(signal.SIGINT, graceful_shutdown)
+signal.signal(signal.SIGTERM, graceful_shutdown)
 
 def loop_supervivencia():
     while True:
@@ -32,8 +30,13 @@ def loop_supervivencia():
         time.sleep(3)
 
 def iniciar_sistema():
+    # 0. Asegurar directorios críticos
+    (BASE_DIR / "logs").mkdir(exist_ok=True)
+    (BASE_DIR / "data").mkdir(exist_ok=True)
+
     logger.remove()
-    logger.add("logs/shadow_grimorio.log", rotation="1 MB", level="DEBUG")
+    # Ruta absoluta para logs
+    logger.add(str(BASE_DIR / "logs" / "shadow_grimorio.log"), rotation="1 MB", level="DEBUG")
     logger.add(sys.stderr, level="INFO")
 
     if not config.validate_security():
@@ -46,14 +49,15 @@ def iniciar_sistema():
     threading.Thread(target=loop_supervivencia, daemon=True).start()
 
     try:
-        logger.info("--- 💀 INICIANDO PROTOCOLO SHADOW_GRIMORIO v1.0_beta 💀 ---")
+        logger.info(f"--- 💀 INICIANDO PROTOCOLO SHADOW_GRIMORIO v1.0_beta 💀 ---")
+        logger.info(f"📍 Raíz detectada: {BASE_DIR}")
+        
         es_nuevo = ProfileManager.es_primera_vez()
         app = ShadowGrimorio(es_primera_vez=es_nuevo)
         app.run()
     except Exception as e:
         logger.exception(f"Fallo crítico en el Núcleo: {e}")
     finally:
-        # Esto se ejecuta si la TUI se cierra normalmente (con action_quit)
         graceful_shutdown(0, None)
 
 if __name__ == "__main__":
