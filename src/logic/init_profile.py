@@ -2,14 +2,13 @@ import os
 from cryptography.fernet import Fernet
 from pathlib import Path
 from src.database.manager import db
-from src.database.models import Usuario, Conocimiento
+from src.database.models import Usuario, Rango, Dispositivo, Preferencia, Conocimiento
 from loguru import logger
 
 class ProfileManager:
     @staticmethod
     def es_primera_vez():
         """Verifica si el sistema necesita una inicialización completa."""
-        # 1. Capa de Seguridad (.env)
         env_path = Path(".env")
         tiene_key = False
         if env_path.exists():
@@ -20,49 +19,83 @@ class ProfileManager:
         if not tiene_key:
             return True
 
-        # 2. Capa de Datos (Usuario)
         try:
             session = db.get_session()
+            # Verificamos si existe al menos un usuario en la nueva estructura
             user = session.query(Usuario).first()
             session.close()
             return user is None
         except Exception as e:
-            # Captura errores de columnas faltantes o tablas inexistentes
-            logger.warning(f"⚠️ Estructura de DB antigua o corrupta detectada: {e}")
-            # En caso de error de esquema, asumimos que es necesario re-inicializar
+            logger.warning(f"⚠️ Estructura de DB incompatible detectada: {e}")
             return True
 
     @staticmethod
+    def inicializar_catalogo_rangos(session):
+        """Asegura que la tabla de Rangos esté poblada según 3FN."""
+        rangos_definidos = [
+            ("Iniciado", 1),
+            ("Shadow_Coder", 2),
+            ("Arquitecto", 3)
+        ]
+        for nombre, nivel in rangos_definidos:
+            existe = session.query(Rango).filter_by(nombre=nombre).first()
+            if not existe:
+                session.add(Rango(nombre=nombre, nivel_acceso=nivel))
+        session.flush()
+
+    @staticmethod
     def registrar_usuario(alias, raw_master_key):
-        """Sella el perfil con la Master Key única y huella de hardware."""
+        """Sella el perfil normalizado con Master Key y hardware vinculado."""
         from src.logic.identity_matrix import sap
         session = db.get_session()
         try:
-            # Limpiar perfiles antiguos para evitar colisiones de Master Key
+            # 1. Preparar Catálogo de Rangos
+            ProfileManager.inicializar_catalogo_rangos(session)
+            
+            # 2. Limpiar datos antiguos para evitar conflictos de integridad
+            session.query(Preferencia).delete()
+            session.query(Dispositivo).delete()
             session.query(Usuario).delete()
 
+            # 3. Obtener Rango objetivo
+            rango_coder = session.query(Rango).filter_by(nombre="Shadow_Coder").first()
+
+            # 4. Crear Usuario
             nuevo_user = Usuario(
                 alias=alias,
-                rango="Shadow_Coder",
-                hw_fingerprint=sap.hw_fingerprint,
+                rango_rel=rango_coder,
                 master_key_hash=sap.generar_master_hash(raw_master_key),
                 pruebas_completadas=True
             )
             session.add(nuevo_user)
+            session.flush() # Para obtener el ID del nuevo_user
+
+            # 5. Vincular Hardware y Preferencias (3FN)
+            nuevo_dispositivo = Dispositivo(
+                hw_fingerprint=sap.hw_fingerprint,
+                nombre_modelo="ZTE Blade A54",
+                usuario_id=nuevo_user.id
+            )
+            nuevas_prefs = Preferencia(
+                tema="CYBERPUNK",
+                usuario_id=nuevo_user.id
+            )
             
-            # Inicializar conocimientos base (opcional)
+            # 6. Conocimientos Base
             tech_base = [
-                Conocimiento(tecnologia="Python", dominado=True, nivel=8),
-                Conocimiento(tecnologia="FastAPI", dominado=True, nivel=7),
-                Conocimiento(tecnologia="PostgreSQL", dominado=True, nivel=7)
+                Conocimiento(tecnologia="Python", nivel=8),
+                Conocimiento(tecnologia="FastAPI", nivel=7),
+                Conocimiento(tecnologia="PostgreSQL", nivel=7)
             ]
-            session.add_all(tech_base)
             
+            session.add_all([nuevo_dispositivo, nuevas_prefs])
+            session.add_all(tech_base)
+
             session.commit()
-            logger.success(f"⚡ [CORE]: Perfil de {alias} sellado con éxito.")
+            logger.success(f"⚡ [CORE]: Perfil 3FN de {alias} materializado con éxito.")
         except Exception as e:
             session.rollback()
-            logger.error(f"❌ Error al sellar el perfil: {e}")
+            logger.error(f"❌ Error al sellar perfil normalizado: {e}")
         finally:
             session.close()
 

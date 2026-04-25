@@ -2,7 +2,7 @@
 import hashlib
 from src.utils.hardware import generar_huella_hardware
 from src.database.manager import db
-from src.database.models import Usuario
+from src.database.models import Usuario, Rango, Dispositivo
 from loguru import logger
 
 AGENT_IDENTITIES = {
@@ -53,7 +53,7 @@ No uses Markdown ni texto extra.""",
 }
 
 class ShadowAccessProtocol:
-    """Gestiona el acceso mediante una Master Key Única vinculada al hardware."""
+    """Gestiona el acceso mediante una Master Key Única vinculada al hardware (3FN)."""
 
     def __init__(self):
         self.hw_fingerprint = generar_huella_hardware()
@@ -69,17 +69,32 @@ class ShadowAccessProtocol:
             session.close()
 
     def inicializar_usuario_debug(self):
+        """Crea un perfil mínimo de emergencia bajo la nueva estructura."""
         session = db.get_session()
         try:
+            # Asegurar que existan rangos
+            from src.logic.init_profile import ProfileManager
+            ProfileManager.inicializar_catalogo_rangos(session)
+            
+            rango_ini = session.query(Rango).filter_by(nombre="Iniciado").first()
+            
             nuevo_usuario = Usuario(
                 alias="ShadowRoot07",
-                rango="Iniciado",
-                pruebas_completadas=False,
-                hw_fingerprint=self.hw_fingerprint
+                rango_rel=rango_ini,
+                pruebas_completadas=False
             )
             session.add(nuevo_usuario)
+            session.flush()
+
+            # Registrar el dispositivo actual
+            nuevo_dispositivo = Dispositivo(
+                hw_fingerprint=self.hw_fingerprint,
+                usuario_id=nuevo_usuario.id
+            )
+            session.add(nuevo_dispositivo)
+            
             session.commit()
-            logger.info("👤 SAP: Perfil materializado. Esperando validación técnica.")
+            logger.info("👤 SAP: Perfil 3FN materializado. Esperando validación.")
         except Exception as e:
             session.rollback()
             logger.error(f"❌ SAP Error: {e}")
@@ -87,19 +102,20 @@ class ShadowAccessProtocol:
             session.close()
 
     def activar_bypass_root(self, input_key: str) -> bool:
-        """Activa el acceso total sincronizando memoria y DB."""
+        """Activa el acceso total sincronizando memoria y DB normalizada."""
         if input_key == self.__root_secret:
             session = db.get_session()
             try:
                 user = session.query(Usuario).first()
-                if user:
+                rango_coder = session.query(Rango).filter_by(nombre="Shadow_Coder").first()
+                
+                if user and rango_coder:
                     user.pruebas_completadas = True
-                    user.rango = "Shadow_Coder"
+                    user.rango_rel = rango_coder
                     user.master_key_hash = self.generar_master_hash(self.__root_secret)
                     session.commit()
-                    # Sincronizamos la memoria inmediatamente
-                    self.root_bypass_active = True 
-                    logger.warning("🔓 BYPASS: El Arquitecto ha tomado control total.")
+                    self.root_bypass_active = True
+                    logger.warning("🔓 BYPASS: Control total restaurado mediante SAP.")
                     return True
             except Exception as e:
                 session.rollback()
@@ -109,7 +125,7 @@ class ShadowAccessProtocol:
         return False
 
     def tiene_acceso_total(self) -> bool:
-        """Autoridad única para determinar si el sistema está desbloqueado."""
+        """Determina el estado de acceso consultando la jerarquía de rangos."""
         if self.root_bypass_active:
             return True
 
@@ -118,9 +134,11 @@ class ShadowAccessProtocol:
             user = session.query(Usuario).first()
             if not user:
                 return False
+
+            # 3FN: Verificamos el nombre a través de la relación de rango
+            es_shadow_coder = user.rango_rel and user.rango_rel.nombre == "Shadow_Coder"
             
-            # Si en DB ya es Shadow_Coder, actualizamos el flag de memoria
-            if user.pruebas_completadas and user.rango == "Shadow_Coder":
+            if user.pruebas_completadas and es_shadow_coder:
                 self.root_bypass_active = True
                 return True
             return False
@@ -128,11 +146,13 @@ class ShadowAccessProtocol:
             session.close()
 
     def obtener_rango_actual(self) -> str:
-        """Nuevo método auxiliar para evitar que la TUI consulte la DB directamente."""
+        """Consulta el nombre del rango desde la entidad Rango."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
-            return user.rango if user else "Iniciado"
+            if user and user.rango_rel:
+                return user.rango_rel.nombre
+            return "Iniciado"
         finally:
             session.close()
 
@@ -141,8 +161,7 @@ class ShadowAccessProtocol:
         return hashlib.sha512(combined).hexdigest()
 
     def validar_acceso(self, k2: str, k3: str) -> bool:
-        """Valida las llaves del ritual o el bypass root."""
-        # 1. Prioridad: Bypass en memoria o Rango en DB
+        """Valida el acceso comparando el hash contra el dispositivo registrado."""
         if self.root_bypass_active or self.tiene_acceso_total():
             return True
 
@@ -150,6 +169,13 @@ class ShadowAccessProtocol:
         try:
             user = session.query(Usuario).first()
             if not user or not user.master_key_hash:
+                return False
+
+            # Verificamos que el dispositivo actual sea uno de los permitidos para este usuario
+            dispositivo_valido = any(d.hw_fingerprint == self.hw_fingerprint for d in user.dispositivos)
+            
+            if not dispositivo_valido:
+                logger.error("🚫 SAP: Intento de acceso desde hardware no registrado.")
                 return False
 
             key_input = f"{k2}{k3}"
