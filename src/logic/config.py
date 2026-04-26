@@ -76,9 +76,16 @@ class Settings(BaseSettings):
             logger.error(f"Error al guardar config.yaml: {e}")
 
     def validate_security(self):
+        """Verifica que el entorno sea seguro y la llave de cifrado sea válida."""
         if not self.encryption_key or len(self.encryption_key) < 32:
-            logger.critical("🚨 GHOST_SHELL: ENCRYPTION_KEY no detectada o inválida.")
+            logger.critical("🚨 GHOST_SHELL: ENCRYPTION_KEY no detectada.")
             return False
+        
+        # Verificación de integridad de rutas (evita inyecciones de path)
+        if not str(self.base_dir) in str(Path(__file__).resolve()):
+             logger.error("🚨 Integridad de Directorio comprometida.")
+             return False
+             
         return True
 
 config = Settings()

@@ -148,8 +148,11 @@ class ShadowGrimorio(App):
     def action_bypass_root(self) -> None:
         def check_bypass(success: bool):
             if success:
-                self.notify("🔄 RECONECTANDO MATRIZ...", severity="information")
-                self.set_timer(0.2, self.verificar_acceso_shadow)
+                # El usuario ya vio sus llaves, ahora refrescamos al MainMenu
+                self.notify("🔄 SINCRONIZANDO RANGO: ROOT", severity="information")
+                # Forzamos que sap.tiene_acceso_total() devuelva True
+                sap.root_bypass_active = True
+                self.verificar_acceso_shadow()
 
         self.push_screen(BypassRootModal(), callback=check_bypass)
 
