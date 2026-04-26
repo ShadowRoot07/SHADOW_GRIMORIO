@@ -160,28 +160,26 @@ class ShadowGrimorio(App):
         return not sap.tiene_acceso_total()
 
     def verificar_acceso_shadow(self) -> None:
-        """Sincroniza el estado de la DB con la UI de forma protegida."""
+        """Sincroniza el flujo de pantallas (BUG 3)."""
         try:
-            if not self._running:
-                return
+            if not self._running: return
 
+            # 1. ¿Tiene acceso total (Bypass o Root persistente)?
             if sap.tiene_acceso_total():
                 if not isinstance(self.screen, MainMenuScreen):
-                    # Usamos push_screen para mantener la estabilidad de la pila
                     self.push_screen(MainMenuScreen())
                 return
 
+            # 2. ¿Es la primerísima vez (Ni siquiera hay DB/Perfil)?
             if not sap.verificar_perfil_existente():
-                if self.es_primera_vez:
-                    sap.inicializar_usuario_debug()
                 if not isinstance(self.screen, InitWizard):
                     self.push_screen(InitWizard())
                 return
 
+            # 3. Si existe perfil pero no tiene acceso total, va a las pruebas
             self.sincronizar_estado_trials()
-        except Exception:
-            # Silenciamos errores de renderizado asíncrono durante el boot
-            pass
+        except Exception as e:
+            logger.error(f"Error en flujo de acceso: {e}")
 
     def sincronizar_estado_trials(self) -> None:
         session = db.get_session()

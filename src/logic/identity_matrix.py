@@ -1,9 +1,13 @@
 import hashlib
+import secrets
 from loguru import logger
 from src.utils.hardware import generar_huella_hardware
 from src.database.manager import db
 from src.database.models import Usuario, Rango, Dispositivo
 from src.logic.vault import vault
+
+logger.add("debug_bypass.log", rotation="1 MB", level="DEBUG", enqueue=True)
+
 
 ROOT_HASH_TARGET = "93ef0088d4bad49a52230b71ff0317c69bed6d156993d7e8f5366e6dbc7955bc"
 
@@ -67,63 +71,102 @@ class ShadowAccessProtocol:
             session.close()
 
     def activar_bypass_root(self, input_key: str) -> bool:
-        llave_limpia = input_key.strip()
-        input_hash = hashlib.sha256(llave_limpia.encode()).hexdigest()
+        """
+        Protocolo de Bypass de Emergencia (Nivel Arquitecto).
+        Valida contra el hash SHA-256 pre-calculado.
+        """
+        # 1. Normalización y Limpieza de entrada
+        # Convertimos a string y aplicamos strip para eliminar saltos de línea invisibles
+        llave_limpia = str(input_key).strip()
+        
+        # 2. Generación del hash de comparación (Forzamos UTF-8 para consistencia total)
+        # El hash debe ser idéntico al del script check_hash.py
+        input_hash = hashlib.sha256(llave_limpia.encode('utf-8')).hexdigest()
 
+        # 3. Validación contra el Objetivo (ROOT_HASH_TARGET)
         if input_hash == ROOT_HASH_TARGET:
+            logger.warning(f"⚠️ [SAP]: Bypass activado. Hash validado para: {llave_limpia[:4]}...")
+            
             session = db.get_session()
             try:
-                # Asegurar que existan rangos antes de buscar
+                # Importación diferida para evitar colisiones de dependencias
                 from src.logic.init_profile import ProfileManager
-                ProfileManager.inicializar_catalogo_rangos(session)
                 
+                # Paso A: Asegurar integridad de Catálogo de Rangos
+                ProfileManager.inicializar_catalogo_rangos(session)
+                session.commit()
+
+                # Paso B: Recuperar Rango y Usuario
                 rango_coder = session.query(Rango).filter_by(nombre="Shadow_Coder").first()
                 user = session.query(Usuario).first()
 
+                # Paso C: Gestión del Vault (K2/K3)
+                # Si el vault está vacío, generamos llaves persistentes de 16 caracteres hex
+                if not vault.get_secret("K2_MENTE"):
+                    vault.store_secret("K2_MENTE", secrets.token_hex(8).upper())
+                if not vault.get_secret("K3_ACCION"):
+                    vault.store_secret("K3_ACCION", secrets.token_hex(8).upper())
+
+                # Paso D: Materialización de Identidad
                 if not user:
-                    # SI NO HAY USUARIO (Post-Reset), LO CREAMOS AQUÍ
+                    # Caso: Base de datos virgen
                     user = Usuario(
                         alias="ShadowRoot07",
                         rango_rel=rango_coder,
                         pruebas_completadas=True
                     )
                     session.add(user)
-                    session.flush()
+                    session.flush() # Para obtener el ID del usuario antes de añadir dispositivo
                     
+                    # Asociar el hardware actual como dispositivo autorizado
                     nuevo_dispositivo = Dispositivo(
                         hw_fingerprint=self.hw_fingerprint,
                         usuario_id=user.id
                     )
                     session.add(nuevo_dispositivo)
-                    logger.info("👤 SAP: Perfil Arquitecto materializado desde bypass.")
+                else:
+                    # Caso: Usuario existente, forzar ascenso de privilegios
+                    user.rango_rel = rango_coder
+                    user.pruebas_completadas = True
 
-                user.pruebas_completadas = True
-                user.rango_rel = rango_coder
+                # Paso E: Sincronizar Master Key (Persistencia SHA-512)
+                # IMPORTANTE: Se usa generar_master_hash que mezcla llave + HW_Fingerprint
                 user.master_key_hash = self.generar_master_hash(llave_limpia)
-                
+
                 session.commit()
+                
+                # Paso F: Activación de estado en memoria
                 self.root_bypass_active = True
-                logger.warning("🔓 BYPASS: Control total restaurado.")
+                logger.success("✅ [SAP]: Acceso nivel Arquitecto concedido. Sesión activa.")
                 return True
+
             except Exception as e:
                 session.rollback()
-                logger.error(f"Error en bypass Root: {e}")
+                logger.error(f"❌ [SAP]: Fallo en la persistencia del bypass: {e}")
+                return False
             finally:
                 session.close()
-        return False
+        
+        # Si no hay coincidencia de hash, cerramos la puerta sin procesar DB
+        else:
+            logger.error(f"🚫 [SAP]: Intento de bypass fallido. Hash no reconocido.")
+            return False
 
     def recuperar_llaves_vault(self) -> dict:
         return {
-            "K2": vault.get_secret("K2_MENTE") or "No configurada",
-            "K3": vault.get_secret("K3_ACCION") or "No configurada"
+            "K2": vault.get_secret("K2_MENTE") or "ERROR_GEN",
+            "K3": vault.get_secret("K3_ACCION") or "ERROR_GEN"
         }
 
     def tiene_acceso_total(self) -> bool:
-        if self.root_bypass_active: return True
+        # Si ya activamos el bypass en esta sesión de memoria, no preguntes a la DB
+        if self.root_bypass_active: 
+            return True
+            
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
-            if user and user.pruebas_completadas and user.rango_rel.nombre == "Shadow_Coder":
+            if user and user.pruebas_completadas and user.rango_rel and user.rango_rel.nombre == "Shadow_Coder":
                 self.root_bypass_active = True
                 return True
             return False
@@ -139,20 +182,9 @@ class ShadowAccessProtocol:
             session.close()
 
     def generar_master_hash(self, key_input: str) -> str:
-        combined = f"{key_input.strip()}{self.hw_fingerprint}".encode()
+        # Unificamos el formato: llave + huella
+        combined = f"{key_input.strip()}{self.hw_fingerprint}".encode('utf-8')
         return hashlib.sha512(combined).hexdigest()
-
-    def validar_acceso(self, k2: str, k3: str) -> bool:
-        if self.root_bypass_active: return True
-        session = db.get_session()
-        try:
-            user = session.query(Usuario).first()
-            if not user or not user.master_key_hash: return False
-            dispositivo_valido = any(d.hw_fingerprint == self.hw_fingerprint for d in user.dispositivos)
-            if not dispositivo_valido: return False
-            return self.generar_master_hash(f"{k2}{k3}") == user.master_key_hash
-        finally:
-            session.close()
 
 sap = ShadowAccessProtocol()
 

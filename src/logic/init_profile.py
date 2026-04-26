@@ -8,26 +8,13 @@ from loguru import logger
 class ProfileManager:
     @staticmethod
     def es_primera_vez():
-        """Verifica si el sistema necesita una inicialización completa."""
-        env_path = Path(".env")
-        tiene_key = False
-        if env_path.exists():
-            with open(env_path, "r") as f:
-                content = f.read()
-                tiene_key = "ENCRYPTION_KEY" in content and len(content.split("ENCRYPTION_KEY=")[1].strip()) > 0
-
-        if not tiene_key:
-            return True
-
+        session = db.get_session()
         try:
-            session = db.get_session()
-            # Verificamos si existe al menos un usuario en la nueva estructura
             user = session.query(Usuario).first()
+            # Si no hay usuario O el usuario NO ha terminado pruebas, es primera vez.
+            return user is None or user.pruebas_completadas is False
+        finally:
             session.close()
-            return user is None
-        except Exception as e:
-            logger.warning(f"⚠️ Estructura de DB incompatible detectada: {e}")
-            return True
 
     @staticmethod
     def inicializar_catalogo_rangos(session):
