@@ -126,21 +126,30 @@ class ShadowAccessProtocol:
 
     def tiene_acceso_total(self) -> bool:
         """Determina el estado de acceso consultando la jerarquía de rangos."""
+        # Si el bypass se activó en esta sesión de ejecución
         if self.root_bypass_active:
             return True
 
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
+            # Si no hay usuario, es imposible que haya acceso
             if not user:
                 return False
 
-            # 3FN: Verificamos el nombre a través de la relación de rango
+            # Verificamos integridad 3FN
             es_shadow_coder = user.rango_rel and user.rango_rel.nombre == "Shadow_Coder"
             
+            # Solo damos acceso total si el usuario completó pruebas Y tiene el rango
             if user.pruebas_completadas and es_shadow_coder:
-                self.root_bypass_active = True
+                # Aquí podrías añadir una validación de hardware extra si quieres
+                # pero por ahora, activamos el flag de sesión para no re-consultar la DB
+                self.root_bypass_active = True 
                 return True
+            
+            return False
+        except Exception as e:
+            logger.error(f"Error consultando acceso: {e}")
             return False
         finally:
             session.close()

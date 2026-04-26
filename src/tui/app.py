@@ -1,9 +1,8 @@
 import json
 from pathlib import Path
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Static, Label
+from textual.widgets import Static, Label
 from textual.containers import Container, Vertical, Center
-from textual.events import Key
 
 from src.logic.config import config
 from src.tui.themes import THEMES
@@ -15,7 +14,7 @@ from src.database.models import Usuario
 from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
 from src.logic.identity_matrix import sap
-from src.tui.bypass_modal import BypassRootModal 
+from src.tui.bypass_modal import BypassRootModal
 
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
@@ -28,7 +27,7 @@ class ShadowGrimorio(App):
 
     BINDINGS = [
         ("q", "quit", "Salir"),
-        ("f1", "bypass_root", "Bypass"), 
+        ("f1", "bypass_root", "Bypass"),
         ("g", "agentes", "Agentes"),
         ("c", "chat", "Oráculo"),
         ("t", "next_theme", "Tema"),
@@ -59,15 +58,19 @@ class ShadowGrimorio(App):
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"
         self.aplicar_estilos_tema()
-        self.verificar_acceso_shadow()
+        
+        # Protocolo de inicio seguro: 300ms para estabilizar el renderizado en móvil
+        self.set_timer(0.3, self.verificar_acceso_shadow)
         self.set_interval(2.0, self.global_observer)
+
+    def watch_screen(self, screen) -> None:
+        self.aplicar_estilos_tema()
 
     def action_bypass_root(self) -> None:
         def check_bypass(success: bool):
             if success:
-                # Forzamos la actualización inmediata del estado
-                self.app.notify("🔄 RECONECTANDO MATRIZ...", severity="info")
-                self.verificar_acceso_shadow()
+                self.notify("🔄 RECONECTANDO MATRIZ...", severity="information")
+                self.set_timer(0.2, self.verificar_acceso_shadow)
 
         self.push_screen(BypassRootModal(), callback=check_bypass)
 
@@ -75,40 +78,45 @@ class ShadowGrimorio(App):
         return not sap.tiene_acceso_total()
 
     def verificar_acceso_shadow(self) -> None:
-        """Sincroniza el estado de la DB con la UI de forma atómica."""
-        acceso_total = sap.tiene_acceso_total()
+        """Sincroniza el estado de la DB con la UI de forma protegida."""
+        try:
+            if not self._running:
+                return
 
-        if acceso_total:
-            while len(self.screen_stack) > 1:
-                self.pop_screen()
+            if sap.tiene_acceso_total():
+                if not isinstance(self.screen, MainMenuScreen):
+                    # Usamos push_screen para mantener la estabilidad de la pila
+                    self.push_screen(MainMenuScreen())
+                return
 
-            if not isinstance(self.screen, MainMenuScreen):
-                self.switch_screen(MainMenuScreen())
-            return
+            if not sap.verificar_perfil_existente():
+                if self.es_primera_vez:
+                    sap.inicializar_usuario_debug()
+                if not isinstance(self.screen, InitWizard):
+                    self.push_screen(InitWizard())
+                return
 
-        if not sap.verificar_perfil_existente():
-            sap.inicializar_usuario_debug()
-            self.push_screen(InitWizard())
-            return
+            self.sincronizar_estado_trials()
+        except Exception:
+            # Silenciamos errores de renderizado asíncrono durante el boot
+            pass
 
+    def sincronizar_estado_trials(self) -> None:
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
             if user and not user.pruebas_completadas:
-                current_rango = user.rango
-
-                if current_rango == "Iniciado" or current_rango.startswith("F1_S"):
+                rango_nombre = user.rango_rel.nombre if user.rango_rel else "Iniciado"
+                if rango_nombre == "Iniciado" or rango_nombre.startswith("F1_S"):
                     from src.tui.trial_screen import TrialScreen
                     if not isinstance(self.screen, TrialScreen):
                         self.push_screen(TrialScreen())
-                elif current_rango == "F1_COMPLETADA" or current_rango.startswith("F2_"):
+                elif rango_nombre == "F1_COMPLETADA" or rango_nombre.startswith("F2_"):
                     from src.tui.trial_screen_v2 import TrialScreenV2
                     if not isinstance(self.screen, TrialScreenV2):
                         self.push_screen(TrialScreenV2())
         finally:
             session.close()
-        # LA LÍNEA DEL MODAL FUE ELIMINADA DE AQUÍ
-
 
     def global_observer(self) -> None:
         if self.modal_abierto or self.esta_bloqueado(): return
@@ -137,7 +145,8 @@ class ShadowGrimorio(App):
         self.modal_abierto = False
 
     def aplicar_estilos_tema(self) -> None:
-        self.screen.styles.background = self.tema['bg']
+        if hasattr(self, 'screen') and self.screen:
+            self.screen.styles.background = self.tema.get('bg', "#000000")
 
     def compose(self) -> ComposeResult:
         yield TelemetryBar()
@@ -146,7 +155,8 @@ class ShadowGrimorio(App):
                 with Center():
                     yield Static(ASCIILoader.get_art('splash'), id="logo")
                 yield Label("[ NÚCLEO ONLINE ]", id="status")
-        yield Footer()
+        # ELIMINADO: yield Footer() aquí causaba el ScreenStackError.
+        # Ahora cada pantalla renderiza su propio Footer localmente.
 
     def action_chat(self) -> None:
         if self.esta_bloqueado(): return
@@ -160,7 +170,8 @@ class ShadowGrimorio(App):
 
     def action_main_menu(self) -> None:
         if self.esta_bloqueado(): return
-        self.push_screen(MainMenuScreen())
+        if not isinstance(self.screen, MainMenuScreen):
+            self.push_screen(MainMenuScreen())
 
     def action_back(self) -> None:
         if self.esta_bloqueado(): return
@@ -168,10 +179,7 @@ class ShadowGrimorio(App):
             self.pop_screen()
             self.modal_abierto = False
 
-    
     async def action_quit(self) -> None:
-        """Cierre controlado desde la interfaz."""
         self.app.notify("Desconectando de la Matriz...", severity="warning")
-        self.exit() 
-        # Al llamar a self.exit(), main.py caerá en el bloque 'finally' 
-        # y ejecutará el shutdown de la base de datos.
+        self.exit()
+

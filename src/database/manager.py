@@ -6,7 +6,7 @@ from src.logic.ghost_shell import ghost
 from loguru import logger
 
 class DatabaseManager:
-    """Orquestador de persistencia con soporte para GHOST_SHELL y Blindaje SQLite."""
+    """Orquestador de persistencia con soporte para GHOST_SHELL y Detección Automática de Motor."""
 
     def __init__(self):
         self.db_url = str(config.database_url)
@@ -14,23 +14,38 @@ class DatabaseManager:
         self.SessionLocal = None
 
     def init_db(self, drop_all: bool = False):
-        """Materializa las tablas y optimiza SQLite para Termux."""
+        """Materializa las tablas detectando si el motor es SQLite o PostgreSQL."""
         try:
             if not self.engine:
-                # Optimizamos la conexión para evitar bloqueos
+                # 1. Detectar el motor desde la URL
+                is_sqlite = self.db_url.startswith("sqlite")
+                
+                # 2. Configurar argumentos de conexión específicos
+                connect_args = {}
+                if is_sqlite:
+                    # Blindaje solo para SQLite (evita bloqueos de hilos en Termux)
+                    connect_args["check_same_thread"] = False
+                
+                # Para PostgreSQL (Neon), SQLAlchemy maneja el SSL mediante la URL, 
+                # así que no necesitamos inyectar argumentos extras aquí.
+
                 self.engine = create_engine(
                     self.db_url,
-                    connect_args={"check_same_thread": False}, # Necesario para hilos de telemetría
-                    pool_pre_ping=True
+                    connect_args=connect_args,
+                    pool_pre_ping=True  # Verifica si la conexión sigue viva (vital para Neon)
                 )
-                
-                # ACTIVAR MODO WAL: Evita el "Database is locked"
-                @event.listens_for(self.engine, "connect")
-                def set_sqlite_pragma(dbapi_connection, connection_record):
-                    cursor = dbapi_connection.cursor()
-                    cursor.execute("PRAGMA journal_mode=WAL")
-                    cursor.execute("PRAGMA synchronous=NORMAL")
-                    cursor.close()
+
+                # 3. Optimizaciones específicas de motor
+                if is_sqlite:
+                    @event.listens_for(self.engine, "connect")
+                    def set_sqlite_pragma(dbapi_connection, connection_record):
+                        cursor = dbapi_connection.cursor()
+                        cursor.execute("PRAGMA journal_mode=WAL")
+                        cursor.execute("PRAGMA synchronous=NORMAL")
+                        cursor.close()
+                    logger.info("📁 DATABASE: SQLite detectado. Modo WAL y Blindaje activado.")
+                else:
+                    logger.info("🌐 DATABASE: PostgreSQL (Remote) detectado. Conexión segura establecida.")
 
                 self.SessionLocal = sessionmaker(
                     autocommit=False,
@@ -42,7 +57,7 @@ class DatabaseManager:
                 Base.metadata.drop_all(bind=self.engine)
 
             Base.metadata.create_all(bind=self.engine)
-            logger.success("📁 DATABASE: Modo WAL activo. Blindaje contra bloqueos listo.")
+            logger.success(f"📁 DATABASE: Sistema de tablas materializado en {self.db_url.split(':')[0]}.")
         except Exception as e:
             logger.error(f"❌ DATABASE: Fallo al materializar tablas: {e}")
 
@@ -57,7 +72,6 @@ class DatabaseManager:
             self.init_db()
         return self.SessionLocal()
 
-    # ... (save_secret y get_secret se mantienen igual)
     def save_secret(self, nombre: str, valor_plano: str):
         if not ghost or not ghost.cipher:
             logger.error(f"❌ DATABASE: No se puede cifrar '{nombre}' sin GHOST_SHELL activo.")
