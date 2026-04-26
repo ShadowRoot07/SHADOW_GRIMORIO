@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from textual.widgets import Static
+from src.tui.themes import THEMES
 
 class TelemetryBar(Static):
     """Barra superior que monitorea Salud del Sistema (CPU/RAM) y Estado."""
@@ -44,10 +45,15 @@ class TelemetryBar(Static):
                 pass
 
         # Renderizado de la barra con enfoque en optimización de recursos
+        tema = getattr(self.app, "tema", THEMES["CYBERPUNK"])
+        c_primary = tema.get("primary", "#00ff00")
+        c_accent = tema.get("accent", "#00ffff")
+        c_secondary = tema.get("secondary", "#ff00ff")
+
+        # Reemplazamos los tags fijos por los colores del tema
         self.update(
             f"[{status_color}]{status_icon} {status}[/] | "
-            f"[cyan]CPU:[/] {cpu_load} | "
-            f"[magenta]RAM FREE:[/] {ram_pct} | "
-            f"[yellow]SHADOW_GRIMORIO[/]"
+            f"[{c_accent}]CPU:[/] {cpu_load} | "
+            f"[{c_secondary}]RAM FREE:[/] {ram_pct} | "
+            f"[{c_primary}]SHADOW_GRIMORIO[/]"
         )
-

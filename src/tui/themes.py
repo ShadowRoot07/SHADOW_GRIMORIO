@@ -23,3 +23,7 @@ def get_theme(name: str) -> dict:
     """Retorna el tema solicitado o el por defecto."""
     return THEMES.get(name.upper(), THEMES["CYBERPUNK"])
 
+def obtener_siguiente_tema(nombre_actual: str) -> str:
+    nombres = list(THEMES.keys())
+    idx = nombres.index(nombre_actual) if nombre_actual in nombres else 0
+    return nombres[(idx + 1) % len(nombres)]

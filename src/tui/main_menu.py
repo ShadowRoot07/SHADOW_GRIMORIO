@@ -4,6 +4,7 @@ from textual.widgets import ListItem, ListView, Label, Footer, Switch, Button
 from textual.containers import Horizontal, Vertical
 from src.tui.widgets import TelemetryBar
 from src.tui.ritual import ShadowRitualModal
+from src.logic.identity_matrix import sap # Importamos SAP
 
 class MenuOption(ListItem):
     def __init__(self, icon: str, title: str, description: str, widget_type: str = "button", locked: bool = False):
@@ -25,40 +26,39 @@ class MenuOption(ListItem):
             if self.widget_type == "switch":
                 yield Switch(id=f"sw_{self.safe_id}", disabled=self.locked)
             else:
+                # Si está bloqueado, el botón cambia visualmente
                 yield Button("EJECUTAR" if not self.locked else "BLOQUEADO",
                              id=f"btn_{self.safe_id}",
                              variant="primary" if not self.locked else "error",
                              disabled=self.locked)
 
 class MainMenuScreen(Screen):
-    # Persistencia de autenticación en la clase
-    authenticated = False
-
     def compose(self) -> ComposeResult:
+        # Consultamos el estado real del protocolo SAP
+        is_root = sap.tiene_acceso_total()
+        
         yield TelemetryBar()
         with Vertical(id="menu_container"):
             yield Label(" [ MATRIZ DE INFRAESTRUCTURA ] ", id="menu_title_main")
-            # FIX: initial_index=None evita que el ListView intente hacer scroll 
-            # de inmediato antes de que la pantalla esté en la pila.
             with ListView(id="main_menu_list", initial_index=None):
-                yield MenuOption("🔓", "INICIAR RITUAL", "Validar llaves de acceso", "button", locked=MainMenuScreen.authenticated)
-                yield MenuOption("🧟", "PROTOCOLO LAZARO", "Recuperar botín desde GitHub", "button", locked=not MainMenuScreen.authenticated)
-                yield MenuOption("🧹", "JANITOR PROTOCOL", "Limpieza de logs y temporales", "button", locked=not MainMenuScreen.authenticated)
-                yield MenuOption("💀", "PURGA TOTAL", "Eliminar datos locales sensibles", "button", locked=not MainMenuScreen.authenticated)
+                # Si ya es root, el ritual no es necesario (bloqueado por éxito)
+                yield MenuOption("🔓", "INICIAR RITUAL", "Validar llaves de acceso", "button", locked=is_root)
+                
+                # Protocolos operativos: desbloqueados si es root
+                yield MenuOption("🧟", "PROTOCOLO LAZARO", "Recuperar botín desde GitHub", "button", locked=not is_root)
+                yield MenuOption("🧹", "JANITOR PROTOCOL", "Limpieza de logs y temporales", "button", locked=not is_root)
+                yield MenuOption("💀", "PURGA TOTAL", "Eliminar datos locales sensibles", "button", locked=not is_root)
         yield Footer()
 
     def on_mount(self) -> None:
-        """Enfocamos el menú manualmente solo cuando el montaje es exitoso."""
-        def focus_list():
-            try:
-                lista = self.query_one("#main_menu_list", ListView)
-                lista.index = 0
-                lista.focus()
-            except Exception:
-                pass
-        
-        # Esperamos 100ms después del montaje para dar el foco de forma segura
-        self.set_timer(0.1, focus_list)
+        self.set_timer(0.1, self.focus_list)
+
+    def focus_list(self):
+        try:
+            lista = self.query_one("#main_menu_list", ListView)
+            lista.index = 0
+            lista.focus()
+        except: pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_iniciar_ritual":
@@ -66,13 +66,9 @@ class MainMenuScreen(Screen):
 
     def finalizar_ritual(self, resultado: bool) -> None:
         if resultado:
-            MainMenuScreen.authenticated = True
-            # Usamos call_after_refresh para que el modal se cierre antes de refrescar
-            self.call_after_refresh(self.refresh_menu)
-
-    def refresh_menu(self):
-        """Reemplaza la pantalla actual con una nueva instancia actualizada."""
-        self.app.switch_screen(MainMenuScreen())
+            # Forzamos al SAP a reconocer el acceso si el ritual fue exitoso
+            sap.root_bypass_active = True 
+            self.app.switch_screen(MainMenuScreen())
 
     CSS = """
     #menu_container { margin: 1 1; height: 1fr; border: tall #00FF00; }

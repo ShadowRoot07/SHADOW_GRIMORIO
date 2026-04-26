@@ -15,6 +15,8 @@ from src.tui.main_menu import MainMenuScreen
 from src.tui.init_wizard import InitWizard
 from src.logic.identity_matrix import sap
 from src.tui.bypass_modal import BypassRootModal
+from src.logic.config import config
+from src.tui.themes import THEMES, get_theme
 
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
@@ -27,14 +29,13 @@ class ShadowGrimorio(App):
 
     BINDINGS = [
         ("q", "quit", "Salir"),
+        ("t", "next_theme", "Cambiar Tema"), # 1. Registro de la tecla
         ("f1", "bypass_root", "Bypass"),
         ("g", "agentes", "Agentes"),
         ("c", "chat", "Oráculo"),
-        ("t", "next_theme", "Tema"),
-        ("m", "main_menu", "Matriz"),
+        ("m", "show_map", "Mapa"),
         ("escape", "back", "Volver")
     ]
-
     def __init__(self, es_primera_vez: bool = False):
         super().__init__()
         self.es_primera_vez = es_primera_vez
@@ -54,6 +55,84 @@ class ShadowGrimorio(App):
 
         self.last_timestamps = {k: "" for k in self.reports.keys()}
         self.modal_abierto = False
+
+    def action_show_map(self) -> None:
+        """Carga y muestra el mapa manualmente."""
+        path = self.reports["explorer"]
+        if path.exists():
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+                self.push_screen(ExplorerModal(data))
+            except Exception as e:
+                self.notify(f"Error al leer mapa: {e}", severity="error")
+        else:
+            self.notify("El mapa aún no ha sido trazado por Explorer.", severity="warning")
+
+    def global_observer(self) -> None:
+        """Observador mejorado para evitar bloqueos y detectar cambios reales."""
+        if self.modal_abierto or self.esta_bloqueado():
+            return
+
+        for key, path in self.reports.items():
+            if not path.exists(): continue
+            
+            try:
+                # Usamos la fecha de modificación del archivo como trigger extra
+                mtime = path.stat().st_mtime
+                if mtime != self.last_timestamps.get(key, 0):
+                    with open(path, "r") as f:
+                        data = json.load(f)
+                    
+                    # Determinamos la clase del modal
+                    modal_map = {
+                        "void": VoidHunterModal,
+                        "watchdog": WatchdogErrorModal,
+                        "explorer": ExplorerModal,
+                        "bruma": BrumaSyncModal,
+                        "janitor": JanitorAuditModal,
+                        "ghost": GhostWritingModal
+                    }
+                    
+                    if key in modal_map:
+                        self.last_timestamps[key] = mtime
+                        self.modal_abierto = True
+                        self.push_screen(modal_map[key](data), callback=self.on_modal_close)
+                        break # Solo uno a la vez
+            except Exception:
+                continue   
+
+    def action_next_theme(self) -> None:
+        """Cicla entre los temas disponibles y persiste la elección."""
+        nombres_temas = list(THEMES.keys())
+        try:
+            indice_actual = nombres_temas.index(self.nombre_tema)
+            siguiente_indice = (indice_actual + 1) % len(nombres_temas)
+        except ValueError:
+            siguiente_indice = 0
+
+        # 2. Actualizar estado en memoria
+        self.nombre_tema = nombres_temas[siguiente_indice]
+        self.tema = THEMES[self.nombre_tema]
+        
+        # 3. Persistir en config.yaml
+        config.shadow_theme = self.nombre_tema
+        config.save_to_yaml()
+
+        # 4. Notificar y refrescar visualmente
+        self.aplicar_estilos_tema()
+        self.notify(f"MATRIZ RECONFIGURADA: {self.nombre_tema}", severity="information")
+        
+        # Forzar refresco de toda la interfaz
+        self.refresh()
+
+    def aplicar_estilos_tema(self) -> None:
+        """Inyecta los colores del tema actual en la pantalla activa."""
+        if hasattr(self, 'screen') and self.screen:
+            # Aplicar fondo global
+            self.screen.styles.background = self.tema.get('bg', "#000000")
+            # Podemos forzar colores de texto base si es necesario
+            self.screen.styles.color = self.tema.get('text', "#ffffff")
 
     def on_mount(self) -> None:
         self.title = "SHADOW_GRIMORIO"

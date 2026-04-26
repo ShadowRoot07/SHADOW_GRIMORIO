@@ -297,13 +297,27 @@ class ExplorerModal(ModalScreen):
             self.dismiss()
 
     CSS = """
-    #explorer_modal { width: 90%; height: 80%; align: center middle; padding: 1; }
+    #explorer_modal { 
+        width: 95%; 
+        height: 90%; 
+        align: center middle; 
+        padding: 1; 
+    }
     #ex_title { text-align: center; text-style: bold; margin-bottom: 0; }
     #ex_subtitle { text-align: center; background: #222200; margin: 1 0; padding: 0 1; }
-    #ex_scroll { height: 1fr; border: solid #555500; background: #000; padding: 1; }
-    
-    .tree_line { color: #FFFACD; text-style: bold; } 
-    
+    #ex_scroll { 
+        height: 1fr; 
+        border: double #555500; 
+        background: #000; 
+        padding: 1;
+        scrollbar-gutter: stable;
+    }
+    /* Eliminamos white-space que causaba el crash */
+    .tree_line { 
+        color: #FFFACD; 
+        text-style: bold; 
+        width: auto;
+    }
     #ex_footer { grid-size: 1; height: 3; margin-top: 1; }
     #close_ex { width: 100%; background: #555500; color: white; border: none; }
     """

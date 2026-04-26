@@ -55,10 +55,8 @@ class ContextInjector:
             user = session.query(Usuario).first()
             alias = user.alias if user else "ShadowRoot07"
 
-            # 1. CONOCIMIENTO LOCAL (Lexicon)
             prompt = f"### CONOCIMIENTO_LOCAL ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"
 
-            # 2. PERSONALIDAD Y ENTORNO
             prompt += (
                 "### SISTEMA OPERATIVO: SHADOW_GRIMORIO ###\n"
                 f"- USUARIO: {alias.upper()}\n"
@@ -66,13 +64,16 @@ class ContextInjector:
                 "- HARDWARE: ZTE Blade A54 (Termux)\n\n"
             )
 
-            # 3. IDENTIDAD DINÁMICA
             if agente_id and agente_id.upper() in AGENT_IDENTITIES:
                 info = AGENT_IDENTITIES[agente_id.upper()]
                 prompt += f"[MODO_AGENTE: {agente_id.upper()}]\n"
                 prompt += f"OBJETIVO: {info.get('prompt', 'Asistente técnico.')}\n\n"
             else:
-                prompt += "ERES EL NÚCLEO CENTRAL. Gestiona el enjambre de agentes con precisión.\n\n"
+                # CAMBIO AQUÍ: Personalidad más fluida
+                prompt += "ERES EL ORÁCULO, la IA central conversacional de Shadow Grimorio. "
+                prompt += "Habla de forma críptica pero eficiente (estilo Cyberpunk). "
+                prompt += "No menciones comandos a menos que el usuario pregunte cómo operar agentes.\n\n"
+
 
             # 4. GHOST_SHELL (Lectura de archivos mencionados en el chat)
             for palabra in query_usuario.split():

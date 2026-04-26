@@ -35,6 +35,10 @@ class TrialScreen(Screen):
                 yield Button("VALIDAR ENTRADA", variant="primary", id="btn_trial_f1")
 
     def on_mount(self):
+        # Cortocircuito inmediato
+        if sap.tiene_acceso_total():
+            self.app.pop_screen()
+            return
         self.actualizar_desafio()
 
     def actualizar_desafio(self):

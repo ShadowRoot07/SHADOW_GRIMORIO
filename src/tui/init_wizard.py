@@ -9,29 +9,28 @@ from loguru import logger
 
 class InitWizard(Screen):
     """Wizard inicial para el sellado del Grimorio."""
+    def on_mount(self) -> None:
+        # Si el SAP ya detecta acceso total (Bypass o DB), no hay nada que inicializar
+        if sap.tiene_acceso_total():
+            logger.info("SAP: Bypass detectado en Wizard. Abortando inicialización redundante.")
+            self.app.pop_screen()
+            return
 
     def compose(self) -> ComposeResult:
+        # (El contenido del compose se mantiene igual que tu archivo original)
         with Vertical(id="wizard_container"):
             yield Label("⚡ INICIALIZACIÓN DEL GRIMORIO ⚡", id="wiz_title")
-            
-            # Sección de Identidad
             yield Label("LLAVE DE MENTE (K2):", classes="wiz_label")
             yield Input(placeholder="Tu frase secreta...", password=True, id="wiz_k2")
-            
             yield Label("LLAVE DE ACCIÓN (K3):", classes="wiz_label")
             yield Input(placeholder="Tu palabra de poder...", password=True, id="wiz_k3")
-
-            # Sección de API (Opcional en el inicio)
             yield Label("GROQ API KEY (Opcional):", classes="wiz_label")
             yield Input(placeholder="gsk_...", password=True, id="wiz_groq")
-
-            # Selección de Matriz (Tema)
             yield Label("SELECCIONE MATRIZ VISUAL:", classes="wiz_label")
             with RadioSet(id="wiz_theme"):
                 yield RadioButton("CYBERPUNK", value=True)
                 yield RadioButton("MATRIX")
                 yield RadioButton("VOID")
-
             with Horizontal(id="wiz_buttons"):
                 yield Button("SELLAR DESTINO", variant="success", id="btn_finish")
 

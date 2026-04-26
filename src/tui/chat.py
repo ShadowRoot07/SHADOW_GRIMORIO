@@ -5,8 +5,14 @@ from textual.widgets import Input, RichLog, Header, Footer, Label
 from textual.containers import Container
 from textual.app import ComposeResult
 
+# Importamos el cliente de Groq existente
+from src.api.groq_client import oraculo
+
 class ChatScreen(Screen):
-    """El Oráculo: Centro de Comando e Inteligencia Operativa."""
+    """El Oráculo: Inteligencia Operativa Conversacional."""
+
+    # Memoria de la sesión actual para dar continuidad al chat
+    historial_chat = []
 
     CSS = """
     ChatScreen { background: #050505; }
@@ -25,32 +31,55 @@ class ChatScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Container(id="chat_container"):
-            yield Label("[SISTEMA OPERATIVO DE SOMBRAS - ORÁCULO V1.1]", id="chat_header")
+            yield Label("[SISTEMA OPERATIVO DE SOMBRAS - ORÁCULO V1.2]", id="chat_header")
             yield RichLog(id="console_log", highlight=True, markup=True)
-            yield Input(placeholder="Escribe al Oráculo o usa /comando...", id="chat_input")
+            yield Input(placeholder="Habla con el Oráculo o usa /comando...", id="chat_input")
             yield Label("Comandos: /scan | /clean | /map | /sync | /clear", classes="cmd_hint")
         yield Footer()
 
     def on_mount(self) -> None:
         self.raiz = Path(__file__).resolve().parents[2]
-        # Cambiamos 'log' por 'console' para evitar conflicto con Textual
         self.console = self.query_one("#console_log")
-        self.console.write("[bold purple]NEXO ESTABLECIDO.[/] Oráculo listo en el ZTE.")
+        self.console.write("[bold purple]NEXO ESTABLECIDO.[/] Oráculo sincronizado.")
         self.query_one("#chat_input").focus()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         if not text: return
 
+        # Mostrar el mensaje del usuario
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {text}")
         self.query_one("#chat_input").value = ""
 
         if text.startswith("/"):
             await self.procesar_comando(text[1:])
         else:
-            self.console.write("[italic yellow]El Oráculo analiza la semántica...[/]")
-            await asyncio.sleep(0.4)
-            self.console.write("[bold purple]Oráculo:[/] Enlace cognitivo limitado. Usa [green]/[/] comandos.")
+            # FLUJO CONVERSACIONAL (Error lógico corregido)
+            await self.consultar_oraculo(text)
+
+    async def consultar_oraculo(self, query: str):
+        """Envía la consulta a Groq integrando el historial local."""
+        self.console.write("[italic yellow]El Oráculo procesando...[/]")
+        
+        try:
+            # Construimos un mini-contexto con los últimos 3 mensajes para no saturar el prompt
+            # Historial reciente:
+            contexto_reciente = "\n".join(self.historial_chat[-6:])
+            prompt_final = f"Historial reciente:\n{contexto_reciente}\n\nUsuario: {query}"
+
+            # Llamada al cliente (sin tocar groq_client.py)
+            # Usamos run_in_executor si la llamada fuera bloqueante, pero consultar es async.
+            respuesta = await oraculo.consultar(prompt_final)
+            
+            # Limpiar el aviso de "procesando" y escribir respuesta
+            self.console.write(f"[bold purple]Oráculo:[/] {respuesta}")
+            
+            # Guardar en la memoria de la sesión
+            self.historial_chat.append(f"Usuario: {query}")
+            self.historial_chat.append(f"Oráculo: {respuesta}")
+            
+        except Exception as e:
+            self.console.write(f"[red]Error de enlace cognitivo:[/] {e}")
 
     async def ejecutar_agente_async(self, script_path: str, nombre_agente: str):
         full_path = self.raiz / script_path
@@ -85,7 +114,8 @@ class ChatScreen(Screen):
             await self.ejecutar_agente_async("src/logic/agents/bruma_sync.py", "Bruma_Sync")
         elif cmd == "clear":
             self.console.clear()
-            self.console.write("[dim]Buffer de consola purgado.[/]")
+            self.historial_chat.clear() # Limpiamos memoria también
+            self.console.write("[dim]Buffer y memoria purgados.[/]")
         else:
             self.console.write(f"[red]Error:[/] '{cmd}' no reconocido.")
 
