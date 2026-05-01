@@ -94,12 +94,19 @@ class PhaseTwoManager:
             return False
     
     def finalizar_fase_dos(self):
-        """Eleva el rango del usuario y prepara el sellado de la Master Key."""
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
             if user:
-                user.rango = "Shadow_Coder"
+                # 1. Actualizamos el Rango Oficial (FK)
+                from src.database.models import Rango
+                rango_oficial = session.query(Rango).filter_by(nombre="Shadow_Coder").first()
+                user.rango_rel = rango_oficial
+                
+                # 2. Marcamos el progreso de texto
+                user.progreso_trials = "F2_COMPLETADA"
+                
+                # 3. SELLADO FINAL
                 user.pruebas_completadas = True
                 session.commit()
                 logger.success("🏆 SAP: Evaluación técnica superada. Rango: Shadow_Coder.")
@@ -108,6 +115,7 @@ class PhaseTwoManager:
             logger.error(f"Error al finalizar Fase 2: {e}")
         finally:
             session.close()
+
 
     def sellar_master_key(self, raw_key: str):
         """Sella la llave definitiva en la base de datos."""

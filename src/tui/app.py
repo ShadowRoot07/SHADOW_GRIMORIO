@@ -17,6 +17,7 @@ from src.logic.identity_matrix import sap
 from src.tui.bypass_modal import BypassRootModal
 from src.logic.config import config
 from src.tui.themes import THEMES, get_theme
+from loguru import logger
 
 from src.tui.modals import (
     WatchdogErrorModal, JanitorAuditModal,
@@ -56,6 +57,109 @@ class ShadowGrimorio(App):
         self.last_timestamps = {k: "" for k in self.reports.keys()}
         self.modal_abierto = False
 
+    def safe_navigate(self, target_screen) -> None:
+        """Navegación blindada contra el ScreenStackError."""
+        # Si el stack tiene 1 o menos pantallas, NO USAMOS switch_screen.
+        # Usamos push para asegurar que siempre haya algo debajo.
+        if len(self.screen_stack) <= 1:
+            self.push_screen(target_screen)
+        else:
+            # Si hay varias pantallas, podemos intercambiar la de arriba
+            self.switch_screen(target_screen)
+
+    def verificar_acceso_shadow(self) -> None:
+        session = db.get_session()
+        try:
+            # 1. Prioridad: ¿Tenemos bypass activo en esta sesión?
+            if sap.root_bypass_active:
+                from src.tui.main_menu import MainMenuScreen
+                self.safe_navigate(MainMenuScreen())
+                return
+
+            session.expire_all()
+            user = session.query(Usuario).first()
+
+            if not user:
+                from src.tui.init_wizard import InitWizard
+                self.push_screen(InitWizard(), callback=lambda _: self.verificar_acceso_shadow())
+                return
+
+            # 2. Si no hay bypass, verificamos el rango del usuario en DB
+            # Si el usuario es Shadow_Coder (Root), pero root_bypass_active es False,
+            # significa que necesita pasar por el Ritual (Login)
+            if user.rango_rel and user.rango_rel.nombre == "Shadow_Coder":
+                if not sap.root_bypass_active:
+                    from src.tui.ritual import ShadowRitualModal
+                    self.safe_navigate(ShadowRitualModal())
+                    return
+
+            # 3. Solo si NO es root y NO ha terminado, va a los Trials
+            if user.pruebas_completadas is False:
+                self.sincronizar_estado_trials()
+                return
+
+            # 4. Caso general: Ritual de acceso
+            from src.tui.ritual import ShadowRitualModal
+            self.safe_navigate(ShadowRitualModal())
+
+        except Exception as e:
+            logger.error(f"Error en guardián: {e}")
+        finally:
+            session.close()
+
+    def sincronizar_estado_trials(self) -> None:
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            progreso = user.progreso_trials or ""
+            
+            # Decidir qué pantalla cargar
+            if "F2" in progreso or "F1_COMPLETADA" in progreso:
+                from src.tui.trial_screen_v2 import TrialScreenV2
+                target = TrialScreenV2()
+            else:
+                from src.tui.trial_screen import TrialScreen
+                target = TrialScreen()
+
+            # Transición segura
+            if len(self.screen_stack) > 1:
+                self.switch_screen(target)
+            else:
+                self.push_screen(target)
+        finally:
+            session.close()
+
+    def global_observer(self) -> None:
+        """Observador unificado. Solo dispara si el usuario ya está logueado."""
+        # Evitamos interrupciones si no hay acceso total o hay un modal activo
+        if self.modal_abierto or not sap.tiene_acceso_total():
+            return
+
+        prioridad_agentes = [
+            (self.reports["void"], "void", VoidHunterModal),
+            (self.reports["watchdog"], "watchdog", WatchdogErrorModal),
+            (self.reports["explorer"], "explorer", ExplorerModal),
+            (self.reports["bruma"], "bruma", BrumaSyncModal),
+            (self.reports["janitor"], "janitor", JanitorAuditModal),
+            (self.reports["ghost"], "ghost", GhostWritingModal),
+        ]
+
+        for path, key, modal_cls in prioridad_agentes:
+            if path.exists():
+                try:
+                    with open(path, "r") as f:
+                        data = json.load(f)
+                    # Detectar cambios reales por timestamp
+                    t = str(data.get("timestamp", data.get("last_check", "")))
+                    if t and t != self.last_timestamps[key]:
+                        self.last_timestamps[key] = t
+                        self.modal_abierto = True
+                        self.push_screen(modal_cls(data), callback=self.on_modal_close)
+                        return # Solo mostramos uno por ciclo
+                except Exception:
+                    continue
+
+
     def action_show_map(self) -> None:
         """Carga y muestra el mapa manualmente."""
         path = self.reports["explorer"]
@@ -68,39 +172,6 @@ class ShadowGrimorio(App):
                 self.notify(f"Error al leer mapa: {e}", severity="error")
         else:
             self.notify("El mapa aún no ha sido trazado por Explorer.", severity="warning")
-
-    def global_observer(self) -> None:
-        """Observador mejorado para evitar bloqueos y detectar cambios reales."""
-        if self.modal_abierto or self.esta_bloqueado():
-            return
-
-        for key, path in self.reports.items():
-            if not path.exists(): continue
-            
-            try:
-                # Usamos la fecha de modificación del archivo como trigger extra
-                mtime = path.stat().st_mtime
-                if mtime != self.last_timestamps.get(key, 0):
-                    with open(path, "r") as f:
-                        data = json.load(f)
-                    
-                    # Determinamos la clase del modal
-                    modal_map = {
-                        "void": VoidHunterModal,
-                        "watchdog": WatchdogErrorModal,
-                        "explorer": ExplorerModal,
-                        "bruma": BrumaSyncModal,
-                        "janitor": JanitorAuditModal,
-                        "ghost": GhostWritingModal
-                    }
-                    
-                    if key in modal_map:
-                        self.last_timestamps[key] = mtime
-                        self.modal_abierto = True
-                        self.push_screen(modal_map[key](data), callback=self.on_modal_close)
-                        break # Solo uno a la vez
-            except Exception:
-                continue   
 
     def action_next_theme(self) -> None:
         """Cicla entre los temas disponibles y persiste la elección."""
@@ -139,7 +210,7 @@ class ShadowGrimorio(App):
         self.aplicar_estilos_tema()
         
         # Protocolo de inicio seguro: 300ms para estabilizar el renderizado en móvil
-        self.set_timer(0.3, self.verificar_acceso_shadow)
+        self.set_timer(1.2, self.verificar_acceso_shadow)
         self.set_interval(2.0, self.global_observer)
 
     def watch_screen(self, screen) -> None:
@@ -152,74 +223,13 @@ class ShadowGrimorio(App):
                 self.notify("🔄 SINCRONIZANDO RANGO: ROOT", severity="information")
                 # Forzamos que sap.tiene_acceso_total() devuelva True
                 sap.root_bypass_active = True
-                self.verificar_acceso_shadow()
+                # PEQUEÑO AJUSTE: Retardo de 0.5s para estabilizar el stack en móvil
+                self.set_timer(0.5, self.verificar_acceso_shadow)
 
         self.push_screen(BypassRootModal(), callback=check_bypass)
 
     def esta_bloqueado(self) -> bool:
         return not sap.tiene_acceso_total()
-
-    def verificar_acceso_shadow(self) -> None:
-        """Sincroniza el flujo de pantallas (BUG 3)."""
-        try:
-            if not self._running: return
-
-            # 1. ¿Tiene acceso total (Bypass o Root persistente)?
-            if sap.tiene_acceso_total():
-                if not isinstance(self.screen, MainMenuScreen):
-                    self.push_screen(MainMenuScreen())
-                return
-
-            # 2. ¿Es la primerísima vez (Ni siquiera hay DB/Perfil)?
-            if not sap.verificar_perfil_existente():
-                if not isinstance(self.screen, InitWizard):
-                    self.push_screen(InitWizard())
-                return
-
-            # 3. Si existe perfil pero no tiene acceso total, va a las pruebas
-            self.sincronizar_estado_trials()
-        except Exception as e:
-            logger.error(f"Error en flujo de acceso: {e}")
-
-    def sincronizar_estado_trials(self) -> None:
-        session = db.get_session()
-        try:
-            user = session.query(Usuario).first()
-            if user and not user.pruebas_completadas:
-                rango_nombre = user.rango_rel.nombre if user.rango_rel else "Iniciado"
-                if rango_nombre == "Iniciado" or rango_nombre.startswith("F1_S"):
-                    from src.tui.trial_screen import TrialScreen
-                    if not isinstance(self.screen, TrialScreen):
-                        self.push_screen(TrialScreen())
-                elif rango_nombre == "F1_COMPLETADA" or rango_nombre.startswith("F2_"):
-                    from src.tui.trial_screen_v2 import TrialScreenV2
-                    if not isinstance(self.screen, TrialScreenV2):
-                        self.push_screen(TrialScreenV2())
-        finally:
-            session.close()
-
-    def global_observer(self) -> None:
-        if self.modal_abierto or self.esta_bloqueado(): return
-        prioridad_agentes = [
-            (self.reports["void"], "void", VoidHunterModal),
-            (self.reports["watchdog"], "watchdog", WatchdogErrorModal),
-            (self.reports["explorer"], "explorer", ExplorerModal),
-            (self.reports["bruma"], "bruma", BrumaSyncModal),
-            (self.reports["janitor"], "janitor", JanitorAuditModal),
-            (self.reports["ghost"], "ghost", GhostWritingModal),
-        ]
-        for path, key, modal_cls in prioridad_agentes:
-            if path.exists():
-                try:
-                    with open(path, "r") as f:
-                        data = json.load(f)
-                    t = str(data.get("timestamp", data.get("last_check", data.get("last_purge", ""))))
-                    if t and t != self.last_timestamps[key]:
-                        self.last_timestamps[key] = t
-                        self.modal_abierto = True
-                        self.push_screen(modal_cls(data), callback=self.on_modal_close)
-                        return
-                except Exception: continue
 
     def on_modal_close(self, _=None) -> None:
         self.modal_abierto = False
@@ -255,9 +265,11 @@ class ShadowGrimorio(App):
 
     def action_back(self) -> None:
         if self.esta_bloqueado(): return
+        # MODIFICACIÓN: Verificamos que haya más de 1 pantalla para no vaciar el stack
         if len(self.screen_stack) > 1:
-            self.pop_screen()
+            # Si la pantalla actual es un modal, reseteamos el flag
             self.modal_abierto = False
+            self.pop_screen()
 
     async def action_quit(self) -> None:
         self.app.notify("Desconectando de la Matriz...", severity="warning")

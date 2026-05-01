@@ -8,8 +8,14 @@ from src.logic.vault import vault
 
 logger.add("debug_bypass.log", rotation="1 MB", level="DEBUG", enqueue=True)
 
-
+# --- CONSTANTES DE SEGURIDAD ---
+# Hash de la K2 de emergencia
+K2_EMERGENCY_HASH = "4f076edeeba13c2b2f7a7368aa7641ca8b2ce371ef55cf75be52c08c77e8e5fd" 
+# Hash de la K3 de emergencia
+K3_EMERGENCY_HASH = "c4beb6e9dc3f1228bb9938d1914d9ff64f13f9f990c53e6cb87ec5734d7214e6"
+# Hash de la ByPass Root
 ROOT_HASH_TARGET = "93ef0088d4bad49a52230b71ff0317c69bed6d156993d7e8f5366e6dbc7955bc"
+# ---------------------------------
 
 AGENT_IDENTITIES = {
     "THE_ARCHITECT": {
@@ -72,85 +78,81 @@ class ShadowAccessProtocol:
 
     def activar_bypass_root(self, input_key: str) -> bool:
         """
-        Protocolo de Bypass de Emergencia (Nivel Arquitecto).
-        Valida contra el hash SHA-256 pre-calculado.
+        Bypass de Emergencia Protegido.
+        Requiere la llave maestra de Root O una de las llaves de emergencia (K2/K3).
         """
-        # 1. Normalización y Limpieza de entrada
-        # Convertimos a string y aplicamos strip para eliminar saltos de línea invisibles
         llave_limpia = str(input_key).strip()
-        
-        # 2. Generación del hash de comparación (Forzamos UTF-8 para consistencia total)
-        # El hash debe ser idéntico al del script check_hash.py
+        # Generamos el hash de lo que acabas de escribir para comparar
         input_hash = hashlib.sha256(llave_limpia.encode('utf-8')).hexdigest()
 
-        # 3. Validación contra el Objetivo (ROOT_HASH_TARGET)
-        if input_hash == ROOT_HASH_TARGET:
-            logger.warning(f"⚠️ [SAP]: Bypass activado. Hash validado para: {llave_limpia[:4]}...")
+        # 1. VALIDACIÓN: ¿Lo que metiste es la clave Root, la K2 de emergencia o la K3?
+        is_root = input_hash == ROOT_HASH_TARGET
+        is_k2 = input_hash == K2_EMERGENCY_HASH
+        is_k3 = input_hash == K3_EMERGENCY_HASH
+
+        if is_root or is_k2 or is_k3:
+            logger.warning(f"⚠️ [SAP]: Bypass validado mediante {'ROOT' if is_root else 'EMERGENCY_KEY'}.")
             
             session = db.get_session()
             try:
-                # Importación diferida para evitar colisiones de dependencias
                 from src.logic.init_profile import ProfileManager
-                
-                # Paso A: Asegurar integridad de Catálogo de Rangos
                 ProfileManager.inicializar_catalogo_rangos(session)
-                session.commit()
-
-                # Paso B: Recuperar Rango y Usuario
+                
                 rango_coder = session.query(Rango).filter_by(nombre="Shadow_Coder").first()
                 user = session.query(Usuario).first()
 
-                # Paso C: Gestión del Vault (K2/K3)
-                # Si el vault está vacío, generamos llaves persistentes de 16 caracteres hex
-                if not vault.get_secret("K2_MENTE"):
-                    vault.store_secret("K2_MENTE", secrets.token_hex(8).upper())
-                if not vault.get_secret("K3_ACCION"):
-                    vault.store_secret("K3_ACCION", secrets.token_hex(8).upper())
+                # --- PASO C: SINCRONIZACIÓN DE IDENTIDAD ---
+                # Si entraste con K2 o K3, usamos ESA llave para re-sellar el vault
+                # Si entraste con ROOT, el sistema usará las llaves que ya existan o pedirá Wizard
+                if is_k2:
+                    vault.store_secret("K2_MENTE", llave_limpia)
+                    logger.info("🔒 K2 sincronizada desde emergencia.")
+                elif is_k3:
+                    vault.store_secret("K3_ACCION", llave_limpia)
+                    logger.info("🔒 K3 sincronizada desde emergencia.")
 
-                # Paso D: Materialización de Identidad
+                # Recuperamos lo que haya en el vault para reconstruir el Master Hash
+                k2_actual = vault.get_secret("K2_MENTE")
+                k3_actual = vault.get_secret("K3_ACCION")
+
+                if not k2_actual or not k3_actual:
+                    logger.error("❌ [SAP]: Vault incompleto. No se puede generar Master Hash.")
+                    return False
+
+                llave_maestra_ritual = f"{k2_actual}{k3_actual}"
+
+                # --- PASO D: MATERIALIZACIÓN ---
                 if not user:
-                    # Caso: Base de datos virgen
+                    logger.info("🆕 [SAP]: Creando cuenta desde Bypass...")
                     user = Usuario(
                         alias="ShadowRoot07",
                         rango_rel=rango_coder,
-                        pruebas_completadas=True
+                        pruebas_completadas=True,
+                        progreso_trials="COMPLETO",
+                        master_key_hash=self.generar_master_hash(llave_maestra_ritual)
                     )
                     session.add(user)
-                    session.flush() # Para obtener el ID del usuario antes de añadir dispositivo
-                    
-                    # Asociar el hardware actual como dispositivo autorizado
-                    nuevo_dispositivo = Dispositivo(
-                        hw_fingerprint=self.hw_fingerprint,
-                        usuario_id=user.id
-                    )
-                    session.add(nuevo_dispositivo)
                 else:
-                    # Caso: Usuario existente, forzar ascenso de privilegios
+                    # Sincronizamos el hash de la DB con lo que tenemos en el Vault
                     user.rango_rel = rango_coder
+                    user.master_key_hash = self.generar_master_hash(llave_maestra_ritual)
                     user.pruebas_completadas = True
-
-                # Paso E: Sincronizar Master Key (Persistencia SHA-512)
-                # IMPORTANTE: Se usa generar_master_hash que mezcla llave + HW_Fingerprint
-                user.master_key_hash = self.generar_master_hash(llave_limpia)
+                    user.progreso_trials = "COMPLETO"
 
                 session.commit()
-                
-                # Paso F: Activación de estado en memoria
                 self.root_bypass_active = True
-                logger.success("✅ [SAP]: Acceso nivel Arquitecto concedido. Sesión activa.")
+                logger.success("✅ [SAP]: Acceso nivel Arquitecto concedido.")
                 return True
 
             except Exception as e:
                 session.rollback()
-                logger.error(f"❌ [SAP]: Fallo en la persistencia del bypass: {e}")
+                logger.error(f"❌ [SAP]: Error en operación de bypass: {e}")
                 return False
             finally:
                 session.close()
         
-        # Si no hay coincidencia de hash, cerramos la puerta sin procesar DB
-        else:
-            logger.error(f"🚫 [SAP]: Intento de bypass fallido. Hash no reconocido.")
-            return False
+        logger.error("🚫 [SAP]: Hash de entrada no reconocido.")
+        return False
 
     def recuperar_llaves_vault(self) -> dict:
         return {
@@ -159,16 +161,23 @@ class ShadowAccessProtocol:
         }
 
     def tiene_acceso_total(self) -> bool:
-        # Si ya activamos el bypass en esta sesión de memoria, no preguntes a la DB
-        if self.root_bypass_active: 
+        if self.root_bypass_active:
             return True
-            
+
         session = db.get_session()
         try:
             user = session.query(Usuario).first()
-            if user and user.pruebas_completadas and user.rango_rel and user.rango_rel.nombre == "Shadow_Coder":
-                self.root_bypass_active = True
-                return True
+            if not user: return False
+
+            # Si NO ha terminado pruebas, acceso_total es siempre False
+            if not user.pruebas_completadas:
+                return False
+
+            # Si YA terminó pruebas y es Shadow_Coder, 
+            # solo devolvemos True si el bypass (login) está activo.
+            if user.rango_rel and user.rango_rel.nombre == "Shadow_Coder":
+                return self.root_bypass_active
+                
             return False
         finally:
             session.close()
@@ -182,9 +191,41 @@ class ShadowAccessProtocol:
             session.close()
 
     def generar_master_hash(self, key_input: str) -> str:
-        # Unificamos el formato: llave + huella
-        combined = f"{key_input.strip()}{self.hw_fingerprint}".encode('utf-8')
+        # Forzamos limpieza absoluta: sin espacios, todo minúsculas
+        llave_final = str(key_input).replace(" ", "").strip().lower()
+        huella = generar_huella_hardware().strip()
+        
+        combined = f"{llave_final}{huella}".encode('utf-8')
         return hashlib.sha512(combined).hexdigest()
+
+
+    def validar_acceso(self, k2: str, k3: str) -> bool:
+        session = db.get_session()
+        try:
+            user = session.query(Usuario).first()
+            if not user or not user.master_key_hash:
+                logger.error("❌ [SAP]: No hay usuario o hash en la DB.")
+                return False
+
+            llave_combinada = f"{k2.strip()}{k3.strip()}"
+            hash_intento = self.generar_master_hash(llave_combinada)
+
+            # --- NUEVOS LOGS DE RASTREO PROFUNDO ---
+            logger.debug(f"🧪 [TRACE] Llave Combinada: {llave_combinada[:4]}...{llave_combinada[-4:]}")
+            logger.debug(f"🧪 [TRACE] Hash Generado: {hash_intento[:10]}...")
+            logger.debug(f"🧪 [TRACE] Hash en DB:    {user.master_key_hash[:10]}...")
+            # ---------------------------------------
+
+            if hash_intento == user.master_key_hash:
+                self.root_bypass_active = True
+                logger.success(f"✅ [SAP]: Ritual exitoso.")
+                return True
+
+            logger.error(f"❌ [SAP]: Hash mismatch.")
+            return False
+        finally:
+            session.close()
+
 
 sap = ShadowAccessProtocol()
 

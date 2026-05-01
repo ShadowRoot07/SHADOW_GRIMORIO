@@ -52,27 +52,28 @@ class AgentManager:
         except: pass
 
     def encender_agente(self, nombre: str) -> bool:
-        if nombre not in self.agentes_activos: return False
+        if nombre not in self.agentes_activos: 
+            self.descubrir_agentes() # Re-escanear por si es un plugin nuevo
+            if nombre not in self.agentes_activos: return False
 
         script_path = self.plugins_path / f"{nombre}.py"
         log_path = self.logs_dir / f"daemon_{nombre}.log"
 
         try:
-            # Usamos una sesión nueva para que el hijo sobreviva a refrescos de la TUI
-            log_file = open(log_path, "a", encoding="utf-8")
-            process = subprocess.Popen(
-                [sys.executable, str(script_path)],
-                stdout=log_file,
-                stderr=log_file,
-                start_new_session=True, 
-                cwd=str(self.project_root),
-                env={**os.environ, "PYTHONPATH": str(self.project_root)} # Inyectamos la ruta
-            )
-            
+            # Abrir en modo append sin bloqueo
+            with open(log_path, "a", encoding="utf-8") as log_file:
+                process = subprocess.Popen(
+                    [sys.executable, str(script_path)],
+                    stdout=log_file,
+                    stderr=log_file,
+                    start_new_session=True,
+                    cwd=str(self.project_root),
+                    env={**os.environ, "PYTHONPATH": str(self.project_root)}
+                )
+
             if process.pid:
                 self.agentes_activos[nombre] = {"pid": process.pid, "status": "on"}
                 self._guardar_estado()
-                logger.info(f"🛰️ Agente {nombre} iniciado (PID: {process.pid})")
                 return True
             return False
         except Exception as e:

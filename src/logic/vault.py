@@ -23,10 +23,10 @@ class ShadowVault:
             json.dump(data, f, indent=4)
 
     def store_secret(self, key: str, value: str):
-        """Cifra y guarda un secreto en la bóveda."""
+        """Cifra y guarda un secreto en la bóveda (Sobrescribe si existe)."""
         encrypted_val = config.encrypt_value(value)
         data = self._read_vault()
-        data[key] = encrypted_val
+        data[key] = encrypted_val # Si K2 ya existía, se actualiza a la de emergencia
         self._write_vault(data)
         logger.info(f"🔒 Secreto '{key}' sellado en la bóveda.")
 

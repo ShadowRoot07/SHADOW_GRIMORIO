@@ -85,7 +85,7 @@ class GroqOraculo:
         logger.debug(f"Modelo: {modelo_activo} | Agente: {agente_id}")
 
         if not contexto_raw or not isinstance(contexto_raw, str):
-            contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes en Termux."
+            contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes de terminal pragmatico y eficaz"
         else:
             contexto_sistema = contexto_raw.strip()
 

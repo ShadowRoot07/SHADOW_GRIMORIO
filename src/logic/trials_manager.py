@@ -44,7 +44,8 @@ class PhaseOneManager:
         session = db.get_session()
         user = session.query(Usuario).first()
         if user:
-            user.rango = f"F1_S{step}_P{paciencia}"
+            # USAMOS EL CAMPO CORRECTO
+            user.progreso_trials = f"F1_S{step}_P{paciencia}"
             session.commit()
         session.close()
 
@@ -52,22 +53,32 @@ class PhaseOneManager:
         session = db.get_session()
         user = session.query(Usuario).first()
         status = {"step": 1, "paciencia": 0}
-        if user and user.rango and user.rango.startswith("F1_"):
+        
+        # LEEMOS DEL CAMPO CORRECTO
+        if user and user.progreso_trials and user.progreso_trials.startswith("F1_"):
             try:
-                parts = user.rango.split("_")
+                parts = user.progreso_trials.split("_")
                 status["step"] = int(parts[1][1:])
                 status["paciencia"] = int(parts[2][1:])
-            except: pass
+            except: 
+                logger.error("Error parseando progreso_trials")
         session.close()
         return status
 
     def finalizar_fase_uno(self):
         session = db.get_session()
-        user = session.query(Usuario).first()
-        if user:
-            user.rango = "F1_COMPLETADA"
-            session.commit()
-        session.close()
+        try:
+            user = session.query(Usuario).first()
+            if user:
+                # Marcamos el hito en el string de progreso
+                user.progreso_trials = "F1_COMPLETADA"
+                # IMPORTANTE: NO pongas pruebas_completadas = True aquí 
+                # a menos que quieras saltarte la Fase 2 y 3.
+                session.commit()
+                logger.success("Fase 1 sellada.")
+        finally:
+            session.close()
+
 
 trials_logic = PhaseOneManager()
 
