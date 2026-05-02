@@ -24,14 +24,14 @@ class DatabaseManager:
         self.online = False
 
     def init_db(self, drop_all: bool = False):
-        """Inicializa ambos motores y sincroniza tablas."""
+        """Inicializa motores duales. La estructura ahora es dictada por Alembic."""
         # --- 1. INICIALIZAR LOCAL (EL ANCLA) ---
         try:
             self.engine_local = create_engine(
-                self.url_local, 
+                self.url_local,
                 connect_args={"check_same_thread": False}
             )
-            # Optimización para Termux/ZTE
+            # Optimización para Termux/ZTE (Mantener rendimiento en móvil)
             @event.listens_for(self.engine_local, "connect")
             def set_sqlite_pragma(dbapi_connection, connection_record):
                 cursor = dbapi_connection.cursor()
@@ -40,28 +40,37 @@ class DatabaseManager:
                 cursor.close()
 
             self.SessionLocal = sessionmaker(bind=self.engine_local)
-            if drop_all: Base.metadata.drop_all(self.engine_local)
-            Base.metadata.create_all(self.engine_local)
-            logger.success("📁 DATABASE: Espejo Local (SQLite) materializado.")
+            
+            # Nota: Si usas drop_all, Alembic perderá el rastro de la versión.
+            # Solo usar en desarrollo extremo.
+            if drop_all: 
+                Base.metadata.drop_all(self.engine_local)
+                logger.warning("⚠️ DATABASE: Tablas locales purgadas.")
+
+            logger.success("📁 DATABASE: Espejo Local (SQLite) vinculado.")
         except Exception as e:
             logger.error(f"❌ DATABASE: Fallo crítico en motor local: {e}")
 
         # --- 2. INICIALIZAR REMOTO (LA NUBE) ---
         if self.url_remote:
             try:
-                # connect_timeout=5 para no congelar la app si no hay señal
+                # connect_timeout=5 para evitar cuelgues por mala señal en el móvil
                 self.engine_remote = create_engine(
-                    self.url_remote, 
+                    self.url_remote,
                     pool_pre_ping=True,
                     connect_args={'connect_timeout': 5}
                 )
-                # Test de conexión real
+                
+                # Verificación de pulso con Neon
                 with self.engine_remote.connect() as conn:
                     self.online = True
-                
+
                 self.SessionRemote = sessionmaker(bind=self.engine_remote)
-                if drop_all: Base.metadata.drop_all(self.engine_remote)
-                Base.metadata.create_all(self.engine_remote)
+                
+                if drop_all: 
+                    Base.metadata.drop_all(self.engine_remote)
+                    logger.warning("⚠️ DATABASE: Tablas remotas purgadas.")
+
                 logger.success("🌐 DATABASE: En línea con Neon (PostgreSQL).")
             except Exception:
                 self.online = False

@@ -82,3 +82,38 @@ class Secreto(Base):
     # RELACIONES
     proveedor = relationship("Proveedor", back_populates="secretos")
 
+
+class Proyecto(Base):
+    """Representa un repositorio o directorio de trabajo gestionado."""
+    __tablename__ = "proyectos"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String, unique=True, nullable=False)
+    path_local = Column(String, nullable=False)
+    rama_actual = Column(String, default="main")
+    last_sync = Column(DateTime, server_default=func.now())
+    
+    # Relación con sus hitos
+    hitos = relationship("HitoHistorial", back_populates="proyecto", cascade="all, delete-orphan")
+
+class HitoHistorial(Base):
+    """Instante congelado de un proyecto: Código + Contexto IA."""
+    __tablename__ = "hitos_historial"
+    id = Column(Integer, primary_key=True)
+    proyecto_id = Column(Integer, ForeignKey("proyectos.id"))
+    
+    # Datos de Git
+    commit_hash = Column(String(40), nullable=False)
+    mensaje_commit = Column(Text)
+    
+    # Datos del Oráculo
+    prompt_usuario = Column(Text)
+    respuesta_ia = Column(Text)
+    
+    # Contexto técnico organizado (JSON para flexibilidad)
+    # Aquí guardaremos el orden de directorios y detalles del stack
+    contexto_tecnico = Column(Text) 
+    
+    fecha = Column(DateTime, server_default=func.now())
+    
+    proyecto = relationship("Proyecto", back_populates="hitos")
+

@@ -83,6 +83,17 @@ class ChatScreen(Screen):
         
         self.chat_input.focus()
 
+        if self.contexto_inicial:
+            h = self.contexto_inicial
+            self.console.write(f"\n[bold yellow]⌛ CRONOLOGÍA RESTAURADA:[/]")
+            self.console.write(f"[dim]Commit: {h['commit']}[/]")
+            self.console.write(f"[cyan]Anteriormente:[/]\nU: {h['prompt_previo'][:50]}...")
+            self.console.write(f"O: {h['respuesta_previa'][:50]}...")
+            
+            # Inyectamos en el historial real del chat para que Spica lo use
+            self.historial_chat.append(f"Usuario: {h['prompt_previo']}")
+            self.historial_chat.append(f"Oráculo: {h['respuesta_previa']}")
+
     def reportar_agentes_activos(self) -> None:
         """Escanea y reporta agentes que ya estaban corriendo en las sombras."""
         from src.logic.agent_manager import manager
@@ -171,6 +182,15 @@ class ChatScreen(Screen):
                 # Ejecutamos la instrucción
                 resultado = architect.procesar_instruccion(respuesta)
                 if resultado["status"] == "success":
+                    # --- TRIGGER DEL CRONISTA ---
+                    from src.logic.agents.chronicler import ChroniclerAgent
+                    self.console.write("[bold green]💾 Sincronizando memoria en Git y DB...[/]")
+                    cronista = ChroniclerAgent()
+                    
+                    # Guardamos el hito con el contexto del plan
+                    h_hash = cronista.registrar_hito(query, respuesta, plan)
+                    self.console.write(f"[dim]Hito registrado: [cyan]{h_hash[:7]}[/][/]")
+                    
                     for detalle in resultado["details"]:
                         self.console.write(f"[green]✓[/] {detalle}")
                 else:
@@ -222,6 +242,13 @@ class ChatScreen(Screen):
         
         elif cmd == "status":
             self.reportar_agentes_activos()
+
+        elif cmd == "history" or cmd == "h":
+            from src.logic.agents.chronicler import ChroniclerAgent
+            c = ChroniclerAgent()
+            arbol = c.obtener_arbol_visual()
+            self.console.write("\n[bold cyan]--- LÍNEA DE TIEMPO DEL PROYECTO ---[/]")
+            self.console.write(f"[green]{arbol}[/]")
 
         else:
             self.console.write(f"[red]Error:[/] '{cmd}' no reconocido.")

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from textual import events
 from textual.app import App, ComposeResult
 from textual.widgets import Static, Label
 from textual.containers import Container, Vertical, Center
@@ -262,6 +263,12 @@ class ShadowGrimorio(App):
         if self.esta_bloqueado(): return
         if not isinstance(self.screen, MainMenuScreen):
             self.push_screen(MainMenuScreen())
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "h":
+            from src.tui.history import HistoryScreen
+            self.push_screen(HistoryScreen())
+            event.stop()
 
     def action_back(self) -> None:
         if self.esta_bloqueado(): return
