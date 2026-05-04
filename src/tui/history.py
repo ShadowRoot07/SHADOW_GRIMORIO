@@ -37,14 +37,19 @@ class HistoryScreen(Screen):
         list_widget = self.query_one("#hist_list")
         list_widget.clear_options()
         
-        session = db.get_session()
-        proyectos = session.query(Proyecto).order_by(Proyecto.last_sync.desc()).all()
-        
-        for p in proyectos:
-            list_widget.add_option(f"📁 {p.nombre} (Rama: {p.rama_actual})")
-        
-        self.proyectos_ids = [p.id for p in proyectos]
-        session.close()
+        try:
+            session = db.get_session()
+            proyectos = session.query(Proyecto).all()
+
+            proyectos.sort(key=lambda x: getattr(x, 'last_sync', 0) or 0, reverse=True)
+            for p in proyectos:
+                # Usar getattr para evitar errores si la columna falta físicamente
+                rama = getattr(p, 'rama_actual', 'main')
+                list_widget.add_option(f"📁 {p.nombre} [dim]({rama})[/]")
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"Fallo al cargar historial: {e}")
+            list_widget.add_option("❌ Error al cargar base de datos")
 
     def cargar_commits(self, proyecto_id):
         self.fase = "COMMITS"

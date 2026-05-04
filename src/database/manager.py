@@ -104,31 +104,37 @@ class DatabaseManager:
             session.close()
 
     def run_migrations(self):
-        """Ejecuta las migraciones de Alembic automáticamente en los motores activos."""
+        """Ejecuta las migraciones limpiando el contexto entre motores."""
         from alembic.config import Config
         from alembic import command
         from src.logic.config import BASE_DIR
+        import sys
+
+        # Forzar recarga de módulos de alembic para evitar que guarde el dialecto previo
+        if 'alembic.runtime.migration' in sys.modules:
+            del sys.modules['alembic.runtime.migration']
 
         alembic_cfg = Config(BASE_DIR / "alembic.ini")
         
-        # 1. Migrar Local (SQLite)
+        # 1. Migrar Local
         try:
-            logger.info("⚙️ ALCHEMY: Sincronizando esquema Local...")
+            logger.info("⚙️ ALCHEMY: Sincronizando Local (SQLite)...")
             alembic_cfg.set_main_option("sqlalchemy.url", self.url_local)
             command.upgrade(alembic_cfg, "head")
-            logger.success("✅ ALCHEMY: Esquema Local al día.")
         except Exception as e:
-            logger.error(f"❌ ALCHEMY: Error migrando Local: {e}")
+            logger.error(f"❌ Error Local: {e}")
 
-        # 2. Migrar Remoto (Neon)
+        # 2. Migrar Remoto
         if self.online and self.url_remote:
             try:
-                logger.info("⚙️ ALCHEMY: Sincronizando esquema Neon...")
+                logger.info("⚙️ ALCHEMY: Sincronizando Neon (PostgreSQL)...")
+                # IMPORTANTE: Recargar configuración limpia para el motor remoto
+                alembic_cfg = Config(BASE_DIR / "alembic.ini") 
                 alembic_cfg.set_main_option("sqlalchemy.url", self.url_remote)
                 command.upgrade(alembic_cfg, "head")
-                logger.success("✅ ALCHEMY: Esquema Neon al día.")
+                logger.success("✅ Neon actualizado.")
             except Exception as e:
-                logger.error(f"❌ ALCHEMY: Error migrando Remoto: {e}")
+                logger.warning(f"⚠️ Conflicto en Neon: {e}")
 
 
     def shutdown(self):
