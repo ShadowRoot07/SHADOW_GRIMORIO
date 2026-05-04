@@ -68,6 +68,9 @@ def iniciar_sistema():
     logger.add(sys.stderr, level="INFO", colorize=True)
 
     db.init_db()
+
+    db.run_migrations()
+
     # Lanzar hilo de supervivencia
     monitor_thread = threading.Thread(target=loop_supervivencia, daemon=True)
     monitor_thread.start()

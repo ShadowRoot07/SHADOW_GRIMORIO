@@ -13,8 +13,10 @@ load_dotenv(BASE_DIR / ".env")
 class DatabaseManager:
     """Orquestador de persistencia dual: SQLite (Local) + PostgreSQL (Remoto)."""
 
-    def __init__(self):
+    def __init__(self, contexto_inicial=None, **kwargs):
         # URL remota: La buscamos en .env, si no, usamos la de config como fallback
+        super().__init__(**kwargs)
+        self.contexto_inicial = contexto_inicial # Esto detiene el crash de on_mount
         self.url_remote = os.getenv("DATABASE_URL")
         self.url_local = f"sqlite:///{BASE_DIR}/data/shadow_local.db"
         self.engine_remote = None
@@ -91,15 +93,43 @@ class DatabaseManager:
         # Intentamos usar la sesión local por velocidad (está sincronizada)
         session = self.SessionLocal()
         try:
-            secreto = session.query(Secreto).filter_by(key=key_name).first()
+            secreto = session.query(Secreto).filter_by(nombre_llave=key_name).first()
             if secreto:
-                return secreto.value
+                return secreto.valor_cifrado
             return None
         except Exception as e:
             logger.error(f"❌ Error al recuperar secreto {key_name}: {e}")
             return None
         finally:
             session.close()
+
+    def run_migrations(self):
+        """Ejecuta las migraciones de Alembic automáticamente en los motores activos."""
+        from alembic.config import Config
+        from alembic import command
+        from src.logic.config import BASE_DIR
+
+        alembic_cfg = Config(BASE_DIR / "alembic.ini")
+        
+        # 1. Migrar Local (SQLite)
+        try:
+            logger.info("⚙️ ALCHEMY: Sincronizando esquema Local...")
+            alembic_cfg.set_main_option("sqlalchemy.url", self.url_local)
+            command.upgrade(alembic_cfg, "head")
+            logger.success("✅ ALCHEMY: Esquema Local al día.")
+        except Exception as e:
+            logger.error(f"❌ ALCHEMY: Error migrando Local: {e}")
+
+        # 2. Migrar Remoto (Neon)
+        if self.online and self.url_remote:
+            try:
+                logger.info("⚙️ ALCHEMY: Sincronizando esquema Neon...")
+                alembic_cfg.set_main_option("sqlalchemy.url", self.url_remote)
+                command.upgrade(alembic_cfg, "head")
+                logger.success("✅ ALCHEMY: Esquema Neon al día.")
+            except Exception as e:
+                logger.error(f"❌ ALCHEMY: Error migrando Remoto: {e}")
+
 
     def shutdown(self):
         """Libera todos los recursos."""

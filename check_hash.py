@@ -1,7 +1,7 @@
 import hashlib
 
 # Esta es la clave que estamos usando
-clave_maestra = "0000-GRIM-ACCION"
+clave_maestra = "ejemplo"
 
 # Generamos el hash SHA-256
 hash_generado = hashlib.sha256(clave_maestra.strip().encode()).hexdigest()

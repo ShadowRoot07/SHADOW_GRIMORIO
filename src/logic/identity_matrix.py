@@ -10,11 +10,11 @@ logger.add("debug_bypass.log", rotation="1 MB", level="DEBUG", enqueue=True)
 
 # --- CONSTANTES DE SEGURIDAD ---
 # Hash de la K2 de emergencia
-K2_EMERGENCY_HASH = "4f076edeeba13c2b2f7a7368aa7641ca8b2ce371ef55cf75be52c08c77e8e5fd" 
+K2_EMERGENCY_HASH = "0ed4e837d891cd2c8b3c5566ec2415e5470571f23d95cda456497590131df4a8"
 # Hash de la K3 de emergencia
-K3_EMERGENCY_HASH = "c4beb6e9dc3f1228bb9938d1914d9ff64f13f9f990c53e6cb87ec5734d7214e6"
+K3_EMERGENCY_HASH = "7a219c38a05c85296772a51920e55a6f7719c70133836bcb2fedd7960bc8a26d"
 # Hash de la ByPass Root
-ROOT_HASH_TARGET = "93ef0088d4bad49a52230b71ff0317c69bed6d156993d7e8f5366e6dbc7955bc"
+ROOT_HASH_TARGET = "52b8882dde93648e680b07eab7929f9d586f4a1bcd5225a13297da32259aa2f3"
 # ---------------------------------
 
 AGENT_IDENTITIES = {

@@ -51,6 +51,10 @@ class ChatScreen(Screen):
     }
     """
 
+    def __init__(self, contexto_inicial=None, **kwargs):
+        super().__init__(**kwargs)
+        self.contexto_inicial = contexto_inicial
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Container(id="chat_container"):
