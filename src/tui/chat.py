@@ -26,6 +26,16 @@ class ChatScreen(Screen):
         scrollbar-gutter: stable;
         overflow-x: hidden;    /* Bloquear el scroll horizontal */
     }
+    #chat_progress {
+        width: 100%;
+        height: 1;
+        display: none; /* Oculta por defecto */
+        margin: 0 1;
+    }
+    #chat_progress > .progress--bar {
+        color: #BB00FF;
+        background: #220033;
+    }
     #input_container {
         height: auto;
         min-height: 3;
@@ -63,6 +73,8 @@ class ChatScreen(Screen):
             # Ajuste en RichLog: activamos wrap=True
             log = RichLog(id="console_log", highlight=True, markup=True, wrap=True)
             yield log
+
+            yield ProgressBar(id="chat_progress", total=100, show_eta=False)
 
             with Horizontal(id="input_container"):
                 yield TextArea(
@@ -168,13 +180,48 @@ class ChatScreen(Screen):
         else:
             await self.consultar_oraculo(text)
 
+    async def tipear_respuesta(self, texto: str):
+        """Efecto de tipeo asíncrono con pausas dramáticas y actualización de barra."""
+        prefix = "[bold purple]Oráculo:[/] "
+        buffer = ""
+        total_caracteres = len(texto)
+        
+        # Mostramos el prefijo primero
+        self.console.write(prefix, scroll_end=False)
+        
+        for i, letra in enumerate(texto):
+            buffer += letra
+            
+            # Actualizamos la barra del 50% al 100% mientras escribe
+            progreso_actual = 50 + ( (i / total_caracteres) * 50 )
+            self.progress.update(progress=progreso_actual)
+
+            # Re-escribimos la línea actual (RichLog permite update si se maneja bien, 
+            # pero para simplicidad en terminal, usamos este flujo)
+            # Nota: En Textual RichLog, para efectos de flujo, 'write' añade.
+            # Para efecto 'tipeo' real en un widget de log, enviamos letra por letra.
+            self.console.write(letra, scroll_end=True, chunk=True)
+
+            # Lógica de pausas dramáticas mejorada
+            if letra == ".":
+                await asyncio.sleep(0.4)
+            elif letra in (",", ";", ":"):
+                await asyncio.sleep(0.2)
+            else:
+                # Variación de entropía para que no parezca un bot simple
+                await asyncio.sleep(random.uniform(0.01, 0.04))
+
+
     async def consultar_oraculo(self, query: str):
+        self.progress.styles.display = "block"
         self.console.write("[italic yellow]El Oráculo procesando...[/]")
         try:
             contexto_reciente = "\n".join(self.historial_chat[-6:])
             prompt_final = f"Historial reciente:\n{contexto_reciente}\n\nUsuario: {query}"
             
             respuesta = await oraculo.consultar(prompt_final)
+            await self.tipear_respuesta(respuesta)
+
             self.console.write(f"[bold purple]Oráculo:[/] {respuesta}")
 
             # --- CONEXIÓN CON ARCHITECT CORE ---
