@@ -53,9 +53,10 @@ def loop_supervivencia():
         time.sleep(5) # Aumentado para ahorrar batería en ZTE
 
 def iniciar_sistema():
+    global db 
+
     from src.logic.config import BASE_DIR
     (BASE_DIR / "logs").mkdir(exist_ok=True)
-
     logger.remove()
     
     # 1. Archivo físico (Siempre confiable)
@@ -71,12 +72,17 @@ def iniciar_sistema():
 
     db.run_migrations()
 
+    db.verificar_integridad_columnas()
+
     # Lanzar hilo de supervivencia
     monitor_thread = threading.Thread(target=loop_supervivencia, daemon=True)
     monitor_thread.start()
 
     try:
-        logger.info("💀 NÚCLEO ACTIVADO - Lanzando interfaz...")
+        from src.database.manager import db
+        with db.get_session().bind.connect() as conn:
+            # Esta función intentará añadir las columnas si no existen
+            db.verificar_integridad_columnas()
         es_nuevo = ProfileManager.es_primera_vez()
         
         app = ShadowGrimorio(es_primera_vez=es_nuevo)

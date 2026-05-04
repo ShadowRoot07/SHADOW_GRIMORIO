@@ -168,6 +168,34 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def verificar_integridad_columnas(self):
+        """Asegura que las columnas críticas existan en todos los motores."""
+        from sqlalchemy import text
+        
+        columnas_necesarias = [
+            ("proyectos", "rama_actual", "VARCHAR"),
+            ("proyectos", "last_sync", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        ]
+
+        motores = [("Local", self.engine_local)]
+        if self.online: motores.append(("Neon", self.engine_remote))
+
+        for motor_name, engine in motores:
+            with engine.connect() as conn:
+                for tabla, col, tipo in columnas_necesarias:
+                    try:
+                        # Intentar una consulta rápida a la columna
+                        conn.execute(text(f"SELECT {col} FROM {tabla} LIMIT 1"))
+                    except Exception:
+                        # Si falla la consulta, la columna no existe: la creamos
+                        try:
+                            conn.rollback() # Limpiar estado de falla
+                            conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo};"))
+                            conn.commit()
+                            logger.success(f"🛠️ INTEGRIDAD: Columna '{col}' inyectada en {motor_name}.")
+                        except Exception as e:
+                            logger.error(f"❌ INTEGRIDAD: Imposible reparar {col} en {motor_name}: {e}")
+
 
 db = DatabaseManager()
 
