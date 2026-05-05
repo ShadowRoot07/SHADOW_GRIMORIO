@@ -100,7 +100,21 @@ class ChatScreen(Screen):
         color: #00FF00 50%;
         text-align: center;
     }
+    #typing_overlay {
+        width: 100%;
+        height: auto;
+        min-height: 1;
+        background: #0a0a0a;
+        color: #BB00FF;
+        /* Cambiado: 'socket' no existe, usamos 'hkey' para un look ciberpunk */
+        border-top: hkey #BB00FF; 
+        padding: 0 1;
+        display: none; 
+        text-style: italic;
+    }
+
     """
+
 
     def __init__(self, contexto_inicial=None, **kwargs):
         super().__init__(**kwargs)
@@ -117,6 +131,7 @@ class ChatScreen(Screen):
             yield Static("", id="typing_buffer")
 
             yield ProgressBar(id="chat_progress", total=100, show_eta=False)
+            yield Static("", id="typing_overlay")
 
             with Horizontal(id="input_container"):
                 yield TextArea(
@@ -230,75 +245,66 @@ class ChatScreen(Screen):
 
 
     async def tipear_respuesta(self, texto: str):
-        """Animación forzada para dispositivos móviles."""
-        buffer_widget = self.query_one("#typing_buffer")
-        prefix = "[bold purple]Oráculo: [/]"
+        overlay = self.query_one("#typing_overlay")
+        overlay.styles.display = "block"
+        
+        prefix = "[bold purple]Oráculo:[/] "
         acumulado = ""
         
-        # Velocidad ShadowRoot
-        delay = 0.02 if len(texto) < 150 else 0.005
-
+        # En móviles, si el delay es muy bajo, el sistema lo ignora. 
+        # 0.06s es el "punto dulce" para que el ZTE renderice letra por letra.
         for i, letra in enumerate(texto):
             acumulado += letra
-            # Actualización del Static
-            buffer_widget.update(f"{prefix}{acumulado}█")
-
-            # Sincronización de barra
+            
+            # Actualización del widget
+            overlay.update(f"{prefix}{acumulado}█")
+            
+            # Forzar actualización de la barra
             progreso = 50 + int((i / len(texto)) * 50)
             self.progress.update(progress=progreso)
 
-            # --- CRÍTICO: Forzar al motor a pintar este frame ---
-            if i % 2 == 0:  # Refrescar cada 2 letras para no saturar el CPU
-                self.app.refresh()
+            # ESTO ES CLAVE: Obligamos al motor a procesar la UI antes de seguir
+            await asyncio.sleep(0.06) 
             
-            if letra == ".": await asyncio.sleep(0.2)
-            else: await asyncio.sleep(delay)
+            # Cada 2 letras, pedimos un refresco de pantalla explícito
+            if i % 2 == 0:
+                self.app.refresh()
 
-        # Traspaso final al log
+        # Al terminar, esperamos un suspiro y movemos al log
+        await asyncio.sleep(0.2)
         self.console.write(f"{prefix}{texto}")
-        buffer_widget.update("") 
+        overlay.update("")
+        overlay.styles.display = "none"
         self.console.scroll_end()
 
     async def consultar_oraculo(self, query: str):
-        """Proceso de consulta con feedback visual de carga."""
         self.progress = self.query_one("#chat_progress")
         self.progress.styles.display = "block"
+        self.progress.update(progress=10)
         
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
-        self.console.write("[italic yellow]Analizando flujo de datos...[/]")
-
-                # Forzar que se vea la barra al 10% antes de la llamada pesada
-        self.progress.update(progress=10)
-        self.app.refresh() 
-        await asyncio.sleep(0.1) # Breve pausa para asegurar renderizado
+        self.app.refresh() # Pintamos el prompt del usuario primero
 
         try:
-            # Fase 1: Carga simulada mientras Groq procesa (10% -> 50%)
-            for p in range(10, 51, 10):
+            # Mientras Groq responde, hacemos que la barra se mueva
+            # Esto confirma si el renderizado está vivo
+            for p in range(15, 45, 5):
                 self.progress.update(progress=p)
-                await asyncio.sleep(0.08)
+                await asyncio.sleep(0.05)
+                self.app.refresh()
 
-            # Fase 2: Obtención de respuesta
             respuesta = await oraculo.consultar(query)
-
-            # Fase 3: Animación de salida
+            
+            # Iniciamos el tipeo
             await self.tipear_respuesta(respuesta)
 
-            # Fase 4: Lógica de Architect Core (solo si hay plan)
-            from src.logic.architect_core import architect
-            plan = architect.planificar(respuesta)
-            if plan:
-                self.console.write("[dim]Plan detectado. Ejecutando Architect Core...[/]")
-                # (Mantén el resto de tu lógica de Architect y Chronicler aquí)
-
         except Exception as e:
-            self.console.write(f"[bold red]⚠ FALLO DE ENLACE:[/] {e}")
+            self.console.write(f"[bold red]⚠ ERROR:[/] {e}")
         finally:
             self.progress.update(progress=100)
             self.app.refresh()
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.5)
             self.progress.styles.display = "none"
-            self.console.scroll_end()
 
     async def procesar_comando(self, cmd_input: str):
         from src.logic.agent_manager import manager # Usar el manager oficial
