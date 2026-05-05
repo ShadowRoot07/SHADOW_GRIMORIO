@@ -244,38 +244,39 @@ class ChatScreen(Screen):
             self.query_one("#input_container").styles.border = ("tall", "#BB00FF")
 
 
-    async def tipear_respuesta(self, texto: str):
-        overlay = self.query_one("#typing_overlay")
-        overlay.styles.display = "block"
-        
-        prefix = "[bold purple]Oráculo:[/] "
-        acumulado = ""
-        
-        # En móviles, si el delay es muy bajo, el sistema lo ignora. 
-        # 0.06s es el "punto dulce" para que el ZTE renderice letra por letra.
-        for i, letra in enumerate(texto):
-            acumulado += letra
-            
-            # Actualización del widget
-            overlay.update(f"{prefix}{acumulado}█")
-            
-            # Forzar actualización de la barra
-            progreso = 50 + int((i / len(texto)) * 50)
-            self.progress.update(progress=progreso)
+    def tipear_respuesta(self, texto: str) -> None:
+        """
+        Usamos run_worker para que la animación viva en su propio hilo 
+        de eventos y no muera por la carga del Oráculo.
+        """
+        async def _animar():
+            overlay = self.query_one("#typing_overlay")
+            overlay.styles.display = "block"
+            prefix = "[bold purple]Oráculo:[/] "
+            acumulado = ""
 
-            # ESTO ES CLAVE: Obligamos al motor a procesar la UI antes de seguir
-            await asyncio.sleep(0.06) 
-            
-            # Cada 2 letras, pedimos un refresco de pantalla explícito
-            if i % 2 == 0:
-                self.app.refresh()
+            for i, letra in enumerate(texto):
+                acumulado += letra
+                # Actualización directa sin pasar por el log todavía
+                overlay.update(f"{prefix}{acumulado}█")
+                
+                # Sincronización de barra
+                progreso = 50 + int((i / len(texto)) * 50)
+                self.progress.update(progress=progreso)
 
-        # Al terminar, esperamos un suspiro y movemos al log
-        await asyncio.sleep(0.2)
-        self.console.write(f"{prefix}{texto}")
-        overlay.update("")
-        overlay.styles.display = "none"
-        self.console.scroll_end()
+                # Micro-pausa obligatoria para que el ZTE pinte la pantalla
+                await asyncio.sleep(0.04)
+            
+            # Al terminar la animación, consolidamos en el historial
+            await asyncio.sleep(0.1)
+            self.console.write(f"{prefix}{texto}")
+            overlay.update("")
+            overlay.styles.display = "none"
+            self.progress.styles.display = "none"
+            self.console.scroll_end()
+
+        # Lanzamos el proceso como un Worker de Textual
+        self.run_worker(_animar(), thread=True)
 
     async def consultar_oraculo(self, query: str):
         self.progress = self.query_one("#chat_progress")
@@ -283,28 +284,23 @@ class ChatScreen(Screen):
         self.progress.update(progress=10)
         
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
-        self.app.refresh() # Pintamos el prompt del usuario primero
 
         try:
-            # Mientras Groq responde, hacemos que la barra se mueva
-            # Esto confirma si el renderizado está vivo
-            for p in range(15, 45, 5):
+            # Fase de pensamiento (Barra moviéndose)
+            for p in range(15, 46, 10):
                 self.progress.update(progress=p)
                 await asyncio.sleep(0.05)
-                self.app.refresh()
 
+            # Llamada al API
             respuesta = await oraculo.consultar(query)
             
-            # Iniciamos el tipeo
-            await self.tipear_respuesta(respuesta)
+            # DISPARAR ANIMACIÓN (Sin await para que el worker tome el control)
+            self.tipear_respuesta(respuesta)
 
         except Exception as e:
-            self.console.write(f"[bold red]⚠ ERROR:[/] {e}")
-        finally:
-            self.progress.update(progress=100)
-            self.app.refresh()
-            await asyncio.sleep(0.5)
+            self.console.write(f"[bold red]⚠ ERROR DE ENLACE:[/] {e}")
             self.progress.styles.display = "none"
+
 
     async def procesar_comando(self, cmd_input: str):
         from src.logic.agent_manager import manager # Usar el manager oficial
