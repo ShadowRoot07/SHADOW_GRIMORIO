@@ -67,7 +67,7 @@ class ChatScreen(Screen):
     }
 
     #input_container {
-        height: 3;
+        height: 6;
         margin-top: 1;
         border: tall #BB00FF;
         background: #0a0a0a;
@@ -102,17 +102,17 @@ class ChatScreen(Screen):
     }
     #typing_overlay {
         width: 100%;
-        height: auto;
-        min-height: 1;
+        max-height: 15; /* Limitamos la altura para que no tape todo */
         background: #0a0a0a;
         color: #BB00FF;
-        /* Cambiado: 'socket' no existe, usamos 'hkey' para un look ciberpunk */
-        border-top: hkey #BB00FF; 
+        border-top: hkey #BB00FF;
         padding: 0 1;
-        display: none; 
+        display: none;
         text-style: italic;
+        /* CLAVE: Permitir scroll vertical y ocultar el horizontal */
+        overflow-y: scroll;
+        overflow-x: hidden;
     }
-
     """
 
 
@@ -135,7 +135,7 @@ class ChatScreen(Screen):
 
             with Horizontal(id="input_container"):
                 yield TextArea(
-                        placeholder="Inyectar comando... (Ctrl+S == Enter)",
+                        placeholder="Inyectar comando... (Ctrl+S == SEND)",
                     id="chat_input", 
                     soft_wrap=True
                 )
@@ -246,8 +246,8 @@ class ChatScreen(Screen):
 
     def tipear_respuesta(self, texto: str) -> None:
         """
-        Usamos run_worker para que la animación viva en su propio hilo 
-        de eventos y no muera por la carga del Oráculo.
+        Versión con Autoscroll: Asegura que las respuestas largas 
+        siempre sean visibles mientras se generan.
         """
         async def _animar():
             overlay = self.query_one("#typing_overlay")
@@ -257,25 +257,27 @@ class ChatScreen(Screen):
 
             for i, letra in enumerate(texto):
                 acumulado += letra
-                # Actualización directa sin pasar por el log todavía
+                # Actualización del contenido
                 overlay.update(f"{prefix}{acumulado}█")
                 
                 # Sincronización de barra
                 progreso = 50 + int((i / len(texto)) * 50)
                 self.progress.update(progress=progreso)
 
-                # Micro-pausa obligatoria para que el ZTE pinte la pantalla
-                await asyncio.sleep(0.04)
+                # CLAVE: Forzar el scroll al final en cada nueva letra/línea
+                overlay.scroll_end(animate=False)
+
+                # Pausa para el renderizado del ZTE
+                await asyncio.sleep(0.03)
             
-            # Al terminar la animación, consolidamos en el historial
-            await asyncio.sleep(0.1)
+            # Consolidación final
+            await asyncio.sleep(0.2)
             self.console.write(f"{prefix}{texto}")
             overlay.update("")
             overlay.styles.display = "none"
             self.progress.styles.display = "none"
             self.console.scroll_end()
 
-        # Lanzamos el proceso como un Worker de Textual
         self.run_worker(_animar(), thread=True)
 
     async def consultar_oraculo(self, query: str):
