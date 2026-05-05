@@ -21,7 +21,7 @@ class ChatScreen(Screen):
         padding: 1; 
         height: 1fr; 
         border: double #00FF00; 
-        background: #000800 5%; /* Un sutil tinte verde de fondo */
+        background: #000800 5%;
     }
     
     #chat_header {
@@ -30,7 +30,8 @@ class ChatScreen(Screen):
         background: #00FF00 15%;
         color: #00FF00;
         text-style: bold;
-        border-bottom: line #00FF00;
+        /* Cambiado: 'line' no existe, usamos 'solid' */
+        border-bottom: solid #00FF00;
         margin-bottom: 1;
     }
 
@@ -84,7 +85,8 @@ class ChatScreen(Screen):
         min-width: 8;
         background: #BB00FF 20%;
         color: #BB00FF;
-        border: outset #BB00FF;
+        /* Cambiado: 'outset' no existe, usamos 'heavy' o 'solid' */
+        border: solid #BB00FF;
         text-style: bold;
     }
     
@@ -94,9 +96,9 @@ class ChatScreen(Screen):
     }
 
     .cmd_hint {
+        /* Cambiado: Eliminado font-size que no existe en Textual */
         color: #00FF00 50%;
         text-align: center;
-        font-size: 80%;
     }
     """
 
