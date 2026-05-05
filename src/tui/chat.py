@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from textual import events
 from textual.screen import Screen
-from textual.widgets import TextArea, RichLog, Header, Footer, Label, Button
+from textual.widgets import TextArea, RichLog, Header, Footer, Label, Button, ProgressBar, Static
 from textual.containers import Container, Horizontal
 from textual.app import ComposeResult
 
@@ -29,12 +29,13 @@ class ChatScreen(Screen):
     #chat_progress {
         width: 100%;
         height: 1;
-        display: none; /* Oculta por defecto */
-        margin: 0 1;
+        background: #1a1a1a;
+        display: none;
+        margin: 1 0; /* Espaciado para que no se pegue */
     }
     #chat_progress > .progress--bar {
-        color: #BB00FF;
         background: #220033;
+        color: #BB00FF;
     }
     #input_container {
         height: auto;
@@ -59,6 +60,15 @@ class ChatScreen(Screen):
         color: white;
         margin-left: 1;
     }
+
+    #typing_buffer {
+        width: 100%;
+        min-height: 1; /* Garantiza que ocupe al menos una línea */
+        color: #BB00FF;
+        background: #050505;
+        padding: 0 1;
+        text-style: italic;
+    }
     """
 
     def __init__(self, contexto_inicial=None, **kwargs):
@@ -68,23 +78,17 @@ class ChatScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Container(id="chat_container"):
-            yield Label("[SISTEMA OPERATIVO DE SOMBRAS - ORÁCULO V2.0]", id="chat_header")
+            yield Label("[ORÁCULO V3.0]", id="chat_header")
+            yield RichLog(id="console_log", wrap=True)
             
-            # Ajuste en RichLog: activamos wrap=True
-            log = RichLog(id="console_log", highlight=True, markup=True, wrap=True)
-            yield log
-
+            # ESTA ES LA CLAVE: El buffer de animación
+            yield Static("", id="typing_buffer") 
+            
             yield ProgressBar(id="chat_progress", total=100, show_eta=False)
-
+            
             with Horizontal(id="input_container"):
-                yield TextArea(
-                    placeholder="Escribe al Oráculo... (Ctrl+S para enviar)",
-                    id="chat_input",
-                    soft_wrap=True
-                )
-                yield Button("SEND", id="btn_send", variant="success")
-
-            yield Label("Comandos: /scan | /clean | /map | /sync | /clear", classes="cmd_hint")
+                yield TextArea(id="chat_input", soft_wrap=True)
+                yield Button("SEND", id="btn_send")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -181,69 +185,72 @@ class ChatScreen(Screen):
             await self.consultar_oraculo(text)
 
     async def tipear_respuesta(self, texto: str):
-        """Efecto de tipeo asíncrono con pausas dramáticas y actualización de barra."""
-        prefix = "[bold purple]Oráculo:[/] "
-        buffer = ""
-        total_caracteres = len(texto)
+        buffer_widget = self.query_one("#typing_buffer")
+        # Aseguramos que la barra sea visible antes de empezar
+        self.progress.styles.display = "block"
         
-        # Mostramos el prefijo primero
-        self.console.write(prefix, scroll_end=False)
+        prefix = "Oráculo: "
+        current_text = ""
         
+        # Si el texto es gigante, aumentamos la velocidad
+        delay = 0.03 if len(texto) < 200 else 0.01
+
         for i, letra in enumerate(texto):
-            buffer += letra
-            
-            # Actualizamos la barra del 50% al 100% mientras escribe
-            progreso_actual = 50 + ( (i / total_caracteres) * 50 )
-            self.progress.update(progress=progreso_actual)
+            current_text += letra
+            # Usamos .update() pero controlando el refresco
+            buffer_widget.update(f"[bold purple]{prefix}[/]{current_text}")
 
-            # Re-escribimos la línea actual (RichLog permite update si se maneja bien, 
-            # pero para simplicidad en terminal, usamos este flujo)
-            # Nota: En Textual RichLog, para efectos de flujo, 'write' añade.
-            # Para efecto 'tipeo' real en un widget de log, enviamos letra por letra.
-            self.console.write(letra, scroll_end=True, chunk=True)
+            progreso = 50 + int((i / len(texto)) * 50)
+            self.progress.update(progress=progreso)
 
-            # Lógica de pausas dramáticas mejorada
-            if letra == ".":
-                await asyncio.sleep(0.4)
-            elif letra in (",", ";", ":"):
-                await asyncio.sleep(0.2)
-            else:
-                # Variación de entropía para que no parezca un bot simple
-                await asyncio.sleep(random.uniform(0.01, 0.04))
+            # Pausas inteligentes
+            if letra == ".": await asyncio.sleep(0.3)
+            elif letra in (",", ":"): await asyncio.sleep(0.1)
+            else: await asyncio.sleep(delay)
 
+        # Traspaso final al historial
+        self.console.write(f"[bold purple]Oráculo:[/] {texto}")
+        buffer_widget.update("") 
+        self.console.scroll_end()
 
     async def consultar_oraculo(self, query: str):
+        self.progress = self.query_one("#chat_progress")
         self.progress.styles.display = "block"
+        self.refresh()
+        self.progress.update(progress=10) # 50% mientras "piensa"
+        
         self.console.write("[italic yellow]El Oráculo procesando...[/]")
+        
         try:
             contexto_reciente = "\n".join(self.historial_chat[-6:])
             prompt_final = f"Historial reciente:\n{contexto_reciente}\n\nUsuario: {query}"
+
+            for p in range(10, 51, 5):
+                self.progress.update(progress=p)
+                await asyncio.sleep(0.05)
+
+            # Llamada real al API
+            respuesta = await oraculo.consultar(query)
             
-            respuesta = await oraculo.consultar(prompt_final)
+            # Ejecutamos el tipeo
             await self.tipear_respuesta(respuesta)
 
-            self.console.write(f"[bold purple]Oráculo:[/] {respuesta}")
+            
+            # Salto de línea estético después del tipeo
+            self.console.write("") 
 
             # --- CONEXIÓN CON ARCHITECT CORE ---
             from src.logic.architect_core import architect
-            # Primero planificamos (Backups, etc.)
             plan = architect.planificar(respuesta)
             if plan:
                 self.console.write("[dim]Plan de acción detectado. Ejecutando cambios...[/]")
-                # Ejecutamos la instrucción
                 resultado = architect.procesar_instruccion(respuesta)
                 if resultado["status"] == "success":
-                    # --- TRIGGER DEL CRONISTA ---
                     from src.logic.agents.chronicler import ChroniclerAgent
-                    self.console.write("[bold green]💾 Sincronizando memoria en Git y DB...[/]")
+                    self.console.write("[bold green]💾 Sincronizando memoria...[/]")
                     cronista = ChroniclerAgent()
-                    
-                    # Guardamos el hito con el contexto del plan
                     h_hash = cronista.registrar_hito(query, respuesta, plan)
                     self.console.write(f"[dim]Hito registrado: [cyan]{h_hash[:7]}[/][/]")
-                    
-                    for detalle in resultado["details"]:
-                        self.console.write(f"[green]✓[/] {detalle}")
                 else:
                     self.console.write(f"[red]⚠ Fallo en construcción:[/] {resultado['message']}")
 
@@ -251,7 +258,16 @@ class ChatScreen(Screen):
             self.historial_chat.append(f"Oráculo: {respuesta}")
 
         except Exception as e:
-            self.console.write(f"[red]Error de enlace cognitivo:[/] {e}")
+            self.console.write(f"\n[red]Error de enlace cognitivo:[/] {e}")
+        
+        finally:
+            # Esperamos un poco para que el usuario vea la barra al 100%
+            self.progress.update(progress=100)
+            await asyncio.sleep(1.0)
+            self.progress.styles.display = "none"
+            self.console.write("")
+            self.console.scroll_end()
+
 
     async def procesar_comando(self, cmd_input: str):
         from src.logic.agent_manager import manager # Usar el manager oficial
