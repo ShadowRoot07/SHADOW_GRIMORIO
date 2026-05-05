@@ -3,7 +3,7 @@ from pathlib import Path
 from textual import events
 from textual.screen import Screen
 from textual.widgets import TextArea, RichLog, Header, Footer, Label, Button, ProgressBar, Static
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, ScrollableContainer
 from textual.app import ComposeResult
 
 # Importamos el cliente de Groq existente
@@ -100,18 +100,21 @@ class ChatScreen(Screen):
         color: #00FF00 50%;
         text-align: center;
     }
+
     #typing_overlay {
         width: 100%;
-        max-height: 15; /* Limitamos la altura para que no tape todo */
+        /* Altura fija para que el scroll funcione correctamente */
+        height: 10; 
         background: #0a0a0a;
         color: #BB00FF;
         border-top: hkey #BB00FF;
+        border-bottom: hkey #BB00FF;
         padding: 0 1;
         display: none;
         text-style: italic;
-        /* CLAVE: Permitir scroll vertical y ocultar el horizontal */
+        /* Forzamos que sea un contenedor con scroll */
         overflow-y: scroll;
-        overflow-x: hidden;
+        scrollbar-gutter: stable;
     }
     """
 
@@ -124,19 +127,22 @@ class ChatScreen(Screen):
         yield Header(show_clock=True)
         with Container(id="chat_container"):
             yield Label(" ⚡ ORÁCULO OPERATIVO V3.0-SHADOW ⚡ ", id="chat_header")
-            
+
             yield RichLog(id="console_log", wrap=True, markup=True)
 
-            # Buffer de animación (El pulso del Oráculo)
+            # Buffer de animación (Este ya lo tenías, lo dejamos quieto)
             yield Static("", id="typing_buffer")
 
             yield ProgressBar(id="chat_progress", total=100, show_eta=False)
-            yield Static("", id="typing_overlay")
+            
+            # EL CONTENEDOR DE SCROLL (Único con este ID)
+            with ScrollableContainer(id="typing_overlay"):
+                yield Static("", id="typing_buffer_internal")
 
             with Horizontal(id="input_container"):
                 yield TextArea(
-                        placeholder="Inyectar comando... (Ctrl+S == SEND)",
-                    id="chat_input", 
+                    placeholder="Inyectar comando... (Ctrl+S == SEND)",
+                    id="chat_input",
                     soft_wrap=True
                 )
                 yield Button("SEND", id="btn_send")
@@ -246,35 +252,42 @@ class ChatScreen(Screen):
 
     def tipear_respuesta(self, texto: str) -> None:
         """
-        Versión con Autoscroll: Asegura que las respuestas largas 
-        siempre sean visibles mientras se generan.
+        Animación optimizada para ShadowRoot: 
+        Usa un contenedor con scroll dedicado.
         """
         async def _animar():
-            overlay = self.query_one("#typing_overlay")
-            overlay.styles.display = "block"
+            # El contenedor padre que tiene el scroll
+            container = self.query_one("#typing_overlay")
+            # El static interno donde inyectamos el texto
+            internal_static = self.query_one("#typing_buffer_internal")
+            
+            container.styles.display = "block"
             prefix = "[bold purple]Oráculo:[/] "
             acumulado = ""
 
             for i, letra in enumerate(texto):
                 acumulado += letra
-                # Actualización del contenido
-                overlay.update(f"{prefix}{acumulado}█")
-                
-                # Sincronización de barra
+                internal_static.update(f"{prefix}{acumulado}█")
+
                 progreso = 50 + int((i / len(texto)) * 50)
                 self.progress.update(progress=progreso)
 
-                # CLAVE: Forzar el scroll al final en cada nueva letra/línea
-                overlay.scroll_end(animate=False)
+                # Forzamos el scroll al final del CONTENEDOR
+                container.scroll_end(animate=False)
 
-                # Pausa para el renderizado del ZTE
-                await asyncio.sleep(0.03)
-            
-            # Consolidación final
+                # Ajuste de delay para el ZTE
+                await asyncio.sleep(0.04)
+                
+                # Refresco visual cada 3 caracteres
+                if i % 3 == 0:
+                    self.app.refresh()
+
             await asyncio.sleep(0.2)
             self.console.write(f"{prefix}{texto}")
-            overlay.update("")
-            overlay.styles.display = "none"
+            
+            # Limpieza
+            internal_static.update("")
+            container.styles.display = "none"
             self.progress.styles.display = "none"
             self.console.scroll_end()
 
