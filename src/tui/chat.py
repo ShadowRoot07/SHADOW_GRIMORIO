@@ -230,31 +230,33 @@ class ChatScreen(Screen):
 
 
     async def tipear_respuesta(self, texto: str):
-        """Animación de flujo de datos en el Static widget."""
+        """Animación forzada para dispositivos móviles."""
         buffer_widget = self.query_one("#typing_buffer")
         prefix = "[bold purple]Oráculo: [/]"
         acumulado = ""
         
-        # Ajuste de velocidad dinámico según longitud
-        delay = 0.02 if len(texto) < 150 else 0.008
+        # Velocidad ShadowRoot
+        delay = 0.02 if len(texto) < 150 else 0.005
 
         for i, letra in enumerate(texto):
             acumulado += letra
-            # Actualizamos el Static (aquí no hay saltos de línea automáticos)
-            buffer_widget.update(f"{prefix}{acumulado}█") # El cursor '█' da el toque terminal
+            # Actualización del Static
+            buffer_widget.update(f"{prefix}{acumulado}█")
 
-            # Sincronización de barra (50% -> 100%)
+            # Sincronización de barra
             progreso = 50 + int((i / len(texto)) * 50)
             self.progress.update(progress=progreso)
 
-            # Pausas rítmicas según puntuación
-            if letra == ".": await asyncio.sleep(0.3)
-            elif letra in (",", ":"): await asyncio.sleep(0.1)
+            # --- CRÍTICO: Forzar al motor a pintar este frame ---
+            if i % 2 == 0:  # Refrescar cada 2 letras para no saturar el CPU
+                self.app.refresh()
+            
+            if letra == ".": await asyncio.sleep(0.2)
             else: await asyncio.sleep(delay)
 
-        # Traspaso final al log permanente
+        # Traspaso final al log
         self.console.write(f"{prefix}{texto}")
-        buffer_widget.update("") # Limpiamos el buffer para el siguiente mensaje
+        buffer_widget.update("") 
         self.console.scroll_end()
 
     async def consultar_oraculo(self, query: str):
@@ -264,6 +266,11 @@ class ChatScreen(Screen):
         
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
         self.console.write("[italic yellow]Analizando flujo de datos...[/]")
+
+                # Forzar que se vea la barra al 10% antes de la llamada pesada
+        self.progress.update(progress=10)
+        self.app.refresh() 
+        await asyncio.sleep(0.1) # Breve pausa para asegurar renderizado
 
         try:
             # Fase 1: Carga simulada mientras Groq procesa (10% -> 50%)
@@ -288,10 +295,10 @@ class ChatScreen(Screen):
             self.console.write(f"[bold red]⚠ FALLO DE ENLACE:[/] {e}")
         finally:
             self.progress.update(progress=100)
-            await asyncio.sleep(0.5)
+            self.app.refresh()
+            await asyncio.sleep(0.8)
             self.progress.styles.display = "none"
             self.console.scroll_end()
-
 
     async def procesar_comando(self, cmd_input: str):
         from src.logic.agent_manager import manager # Usar el manager oficial
