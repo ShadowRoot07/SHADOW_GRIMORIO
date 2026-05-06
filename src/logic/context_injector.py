@@ -76,23 +76,30 @@ class ContextInjector:
     @staticmethod
     def obtener_contexto_completo(agente_id: str = None, query_usuario: str = "") -> str:
         session = db.get_session()
+        
+        # Inicialización de seguridad para evitar NameError
+        alias = "ShadowRoot07"
+        rango_nombre = "Iniciado"
+
         try:
             user = session.query(Usuario).first()
-            alias = user.alias if user else "ShadowRoot07"
-            
+            if user:
+                alias = user.alias
+                # Extraemos el nombre del rango desde la relación
+                if user.rango_rel:
+                    rango_nombre = user.rango_rel.nombre
 
             # --- CONSTRUCCIÓN DEL PROMPT NÚCLEO ---
             prompt = "### NÚCLEO_SPICA_V3 ###\n"
-            prompt += f"PERSONALIDAD: Fría, técnica, eficiente. Estilo Cyberpunk.\n"
-            prompt += f"IDENTIDAD_SISTEMA: Oráculo del Shadow_Grimorio.\n"
-            prompt += f"OPERADOR: {alias.upper()} | RANGO: {rango.upper()}\n\n"
+            prompt += "PERSONALIDAD: Fría, técnica, eficiente. Estilo Cyberpunk.\n"
+            prompt += "IDENTIDAD_SISTEMA: Oráculo del Shadow_Grimorio.\n"
+            prompt += f"OPERADOR: {alias.upper()} | RANGO: {rango_nombre.upper()}\n\n"
 
             # 1. MEMORIA SITUACIONAL (Hitos de la DB)
             prompt += f"{ContextInjector.obtener_memoria_proyectos(3)}\n\n"
 
             # 2. CONOCIMIENTO LOCAL (Archivos y Lexicon)
             prompt += f"### MAPA_LÉXICO ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"
-
             prompt += "- IDIOMA: ESPAÑOL (ESTRICTO)\n"
 
             # 3. MODO DE OPERACIÓN
@@ -111,7 +118,6 @@ class ContextInjector:
                     path_candidato = palabra.strip("., \"'`")
                     p = Path(path_candidato)
                     if p.exists() and p.is_file():
-                        # Límite de seguridad para no explotar la memoria del ZTE
                         if p.stat().st_size < 4096:
                             try:
                                 with open(p, "r", encoding="utf-8", errors="ignore") as f:
@@ -128,4 +134,3 @@ class ContextInjector:
             return "ERROR_CONTEXTO: Responde como núcleo Shadow Grimorio."
         finally:
             session.close()
-

@@ -1,5 +1,15 @@
 from sqlalchemy import text
+import sys
+from pathlib import Path
+
+# Buscamos la raíz del Grimorio (subiendo niveles desde donde esté el script)
+raiz = Path(__file__).resolve().parents[2] # Ajusta el número según la profundidad
+if str(raiz) not in sys.path:
+    sys.path.append(str(raiz))
+
+# Ahora sí, el import no fallará
 from src.database.manager import db
+
 
 def force_repair_v2():
     print("📡 Iniciando Protocolo de Reparación Atómica...")
