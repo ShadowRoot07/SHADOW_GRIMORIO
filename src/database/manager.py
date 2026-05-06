@@ -87,54 +87,54 @@ class DatabaseManager:
         return self.SessionLocal()
 
     def get_secret(self, key_name: str) -> Optional[str]:
-        """Consulta un secreto cifrado en la base de datos."""
         from src.database.models import Secreto
-        
-        # Intentamos usar la sesión local por velocidad (está sincronizada)
+        # Forzamos local porque los secretos se sincronizan al inicio/final
         session = self.SessionLocal()
         try:
+            # Añadimos un filtro de seguridad por si la tabla no existe
             secreto = session.query(Secreto).filter_by(nombre_llave=key_name).first()
-            if secreto:
-                return secreto.valor_cifrado
-            return None
+            return secreto.valor_cifrado if secreto else None
         except Exception as e:
-            logger.error(f"❌ Error al recuperar secreto {key_name}: {e}")
+            logger.error(f"❌ DATABASE: Error en Bóveda Local: {e}")
             return None
         finally:
             session.close()
 
     def run_migrations(self):
-        """Ejecuta las migraciones limpiando el contexto entre motores."""
+        """Ejecuta las migraciones asegurando limpieza total de drivers."""
         from alembic.config import Config
         from alembic import command
-        from src.logic.config import BASE_DIR
         import sys
 
-        # Forzar recarga de módulos de alembic para evitar que guarde el dialecto previo
-        if 'alembic.runtime.migration' in sys.modules:
-            del sys.modules['alembic.runtime.migration']
+        # Función interna para limpiar rastros de Alembic
+        def purge_alembic():
+            for mod in list(sys.modules.keys()):
+                if mod.startswith('alembic'):
+                    del sys.modules[mod]
 
-        alembic_cfg = Config(BASE_DIR / "alembic.ini")
-        
-        # 1. Migrar Local
+        # 1. Migrar Local (SQLite)
         try:
+            purge_alembic()
             logger.info("⚙️ ALCHEMY: Sincronizando Local (SQLite)...")
-            alembic_cfg.set_main_option("sqlalchemy.url", self.url_local)
-            command.upgrade(alembic_cfg, "head")
+            cfg_local = Config(BASE_DIR / "alembic.ini")
+            cfg_local.set_main_option("sqlalchemy.url", self.url_local)
+            command.upgrade(cfg_local, "head")
         except Exception as e:
             logger.error(f"❌ Error Local: {e}")
 
-        # 2. Migrar Remoto
+        # 2. Migrar Remoto (PostgreSQL)
         if self.online and self.url_remote:
             try:
+                purge_alembic()
                 logger.info("⚙️ ALCHEMY: Sincronizando Neon (PostgreSQL)...")
-                # IMPORTANTE: Recargar configuración limpia para el motor remoto
-                alembic_cfg = Config(BASE_DIR / "alembic.ini") 
-                alembic_cfg.set_main_option("sqlalchemy.url", self.url_remote)
-                command.upgrade(alembic_cfg, "head")
-                logger.success("✅ Neon actualizado.")
+                cfg_remote = Config(BASE_DIR / "alembic.ini")
+                cfg_remote.set_main_option("sqlalchemy.url", self.url_remote)
+                # Aquí está el truco: forzamos a que no use el cache previo
+                command.upgrade(cfg_remote, "head")
+                logger.success("✅ Neon actualizado con esquema Postgres.")
             except Exception as e:
-                logger.warning(f"⚠️ Conflicto en Neon: {e}")
+                # Si esto falla, no bloqueamos el inicio de la app
+                logger.warning(f"⚠️ Neon desincronizado: {e}")
 
 
     def shutdown(self):

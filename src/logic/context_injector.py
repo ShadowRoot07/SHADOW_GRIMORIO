@@ -52,7 +52,7 @@ class ContextInjector:
     def obtener_memoria_proyectos(n: int = 3) -> str:
         """Recupera los últimos hitos de desarrollo de la base de datos."""
         from src.database.models import HitoHistorial, Proyecto
-        session = db.get_session()
+        session = db.get_session(force_local=True)
         try:
             hitos = session.query(HitoHistorial).order_by(HitoHistorial.fecha.desc()).limit(n).all()
             if not hitos:
@@ -75,8 +75,8 @@ class ContextInjector:
 
     @staticmethod
     def obtener_contexto_completo(agente_id: str = None, query_usuario: str = "") -> str:
-        session = db.get_session()
-        
+        session = db.get_session(force_local=True) 
+
         # Inicialización de seguridad para evitar NameError
         alias = "ShadowRoot07"
         rango_nombre = "Iniciado"
@@ -89,14 +89,13 @@ class ContextInjector:
                 if user.rango_rel:
                     rango_nombre = user.rango_rel.nombre
 
-            # --- CONSTRUCCIÓN DEL PROMPT NÚCLEO ---
             prompt = "### NÚCLEO_SPICA_V3 ###\n"
             prompt += "PERSONALIDAD: Fría, técnica, eficiente. Estilo Cyberpunk.\n"
             prompt += "IDENTIDAD_SISTEMA: Oráculo del Shadow_Grimorio.\n"
             prompt += f"OPERADOR: {alias.upper()} | RANGO: {rango_nombre.upper()}\n\n"
 
-            # 1. MEMORIA SITUACIONAL (Hitos de la DB)
-            prompt += f"{ContextInjector.obtener_memoria_proyectos(3)}\n\n"
+            # MEMORIA: Usamos la función que ya tiene force_local=True
+            prompt += f"{ContextInjector.obtener_memoria_proyectos(5)}\n\n"
 
             # 2. CONOCIMIENTO LOCAL (Archivos y Lexicon)
             prompt += f"### MAPA_LÉXICO ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"

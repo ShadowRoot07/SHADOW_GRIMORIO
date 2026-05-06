@@ -20,17 +20,20 @@ class ProfileManager:
 
     @staticmethod
     def inicializar_catalogo_rangos(session):
-        """Asegura que la tabla de Rangos esté poblada según 3FN."""
+        """Asegura que los rangos existan sin causar conflictos de ID."""
+        from src.database.models import Rango
         rangos_definidos = [
-            ("Iniciado", 1),
-            ("Shadow_Coder", 2),
-            ("Arquitecto", 3)
+            (1, "Iniciado", 1),
+            (2, "Shadow_Coder", 2),
+            (3, "Arquitecto", 3)
         ]
-        for nombre, nivel in rangos_definidos:
-            existe = session.query(Rango).filter_by(nombre=nombre).first()
+        for rid, nombre, nivel in rangos_definidos:
+            # Buscamos por ID explícito para Neon
+            existe = session.query(Rango).filter_by(id=rid).first()
             if not existe:
-                session.add(Rango(nombre=nombre, nivel_acceso=nivel))
-        session.flush()
+                session.add(Rango(id=rid, nombre=nombre, nivel_acceso=nivel))
+        session.commit()
+        session.flush() # Empuja los cambios sin cerrar la transacción
 
     @staticmethod
     def registrar_usuario(alias, raw_master_key):
