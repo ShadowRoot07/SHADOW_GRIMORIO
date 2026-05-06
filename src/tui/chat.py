@@ -307,10 +307,49 @@ class ChatScreen(Screen):
                 await asyncio.sleep(0.05)
 
             # Llamada al API
-            respuesta = await oraculo.consultar(query)
-            
+            respuesta = await oraculo.consultar(query, agente_id="SPICA")
+
             # DISPARAR ANIMACIÓN (Sin await para que el worker tome el control)
             self.tipear_respuesta(respuesta)
+
+                        # Creamos un worker para no bloquear la UI mientras escribimos en DB/Neon
+            def guardar_en_db():
+                from src.database.manager import db
+                from src.database.models import HitoHistorial, Proyecto
+                import subprocess
+
+                session = db.get_session()
+                try:
+                    # Intentamos obtener el hash del último commit para el hito
+                    try:
+                        commit_hash = subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], 
+                            cwd=str(self.raiz)
+                        ).decode().strip()
+                    except:
+                        commit_hash = "unknown_shadow_pulse"
+
+                    # Buscamos el proyecto actual (o creamos uno genérico)
+                    proyecto = session.query(Proyecto).filter_by(nombre="SHADOW_GRIMORIO").first()
+                    
+                    nuevo_hito = HitoHistorial(
+                        proyecto_id=proyecto.id if proyecto else None,
+                        commit_hash=commit_hash,
+                        prompt_usuario=query,
+                        respuesta_ia=respuesta,
+                        mensaje_commit="Neural Link Sync"
+                    )
+                    session.add(nuevo_hito)
+                    session.commit()
+                except Exception as db_e:
+                    # Log silencioso para no interrumpir al usuario
+                    from loguru import logger
+                    logger.error(f"Fallo al persistir hito: {db_e}")
+                finally:
+                    session.close()
+
+            self.run_worker(guardar_en_db, thread=True)
+
 
         except Exception as e:
             self.console.write(f"[bold red]⚠ ERROR DE ENLACE:[/] {e}")
