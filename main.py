@@ -76,33 +76,33 @@ def iniciar_sistema():
         for motor in ["Local", "Remoto"]:
             sess = db.SessionLocal() if motor == "Local" else (db.SessionRemote() if db.online else None)
             if sess:
-                # 1. SEMBRAR RANGOS (Valores Maestros)
+                # 1. SEMBRAR RANGOS (Atributos corregidos según models.py)
                 rangos_necesarios = [
-                    (1, "User", "Acceso básico"),
-                    (2, "Architect", "Acceso total al sistema")
+                    {"id": 1, "nombre": "Iniciado", "nivel_acceso": 1},
+                    {"id": 2, "nombre": "Architect", "nivel_acceso": 2}
                 ]
-                for r_id, r_nom, r_desc in rangos_necesarios:
-                    if not sess.query(Rango).filter_by(id=r_id).first():
-                        sess.add(Rango(id=r_id, nombre=r_nom, descripcion=r_desc))
-                        logger.info(f"🔰 RANGOS: Rango '{r_nom}' inyectado en {motor}.")
+                for r_data in rangos_necesarios:
+                    r_exist = sess.query(Rango).filter_by(id=r_data["id"]).first()
+                    if not r_exist:
+                        sess.add(Rango(**r_data))
+                        logger.info(f"🔰 RANGOS: '{r_data['nombre']}' inyectado en {motor}.")
                 
-                sess.commit() # Aseguramos rangos antes de seguir
+                sess.commit()
 
-                # 2. ASEGURAR USUARIO
+                # 2. ASEGURAR USUARIO (ID 1 vinculado al Rango 2)
                 if not sess.query(Usuario).filter_by(id=1).first():
-                    sess.add(Usuario(id=1, nombre="ShadowRoot07", rango_id=2))
+                    sess.add(Usuario(id=1, alias="ShadowRoot07", rango_id=2))
                     logger.info(f"👤 IDENTITY: Usuario 1 creado en {motor}.")
                 
-                # 3. ASEGURAR PROYECTO
+                # 3. ASEGURAR PROYECTO (Asegúrate de que path_local no sea NULL)
                 if not sess.query(Proyecto).filter_by(id=1).first():
-                    sess.add(Proyecto(id=1, nombre="SHADOW_GRIMORIO", rama_actual="feature/spica-neural-link-v1"))
+                    sess.add(Proyecto(id=1, nombre="SHADOW_GRIMORIO", path_local=str(BASE_DIR), rama_actual="feature/spica-neural-link-v1"))
                     logger.info(f"🏗️ INFRA: Proyecto Raíz creado en {motor}.")
                 
                 sess.commit()
                 sess.close()
     except Exception as e:
         logger.warning(f"⚠️ ENTORNO: Fallo en pre-vuelo: {e}")
-
     # -----------------------------------------
 
     db.run_migrations()

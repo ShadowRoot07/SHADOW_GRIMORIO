@@ -8,7 +8,7 @@ class ShadowSyncEngine:
 
     @staticmethod
     def synchronize():
-        from src.database.models import Usuario, Proyecto, Secreto, Preferencia, Conocimiento, HitoHistorial, Rango
+        from src.database.models import Usuario, Proyecto, Secreto, Preferencia, Conocimiento, HitoHistorial, Rango, Proveedor, Dispositivo
         
         if not db.online:
             logger.info("📡 SYNC: Saltando sincronización (Modo Offline).")
@@ -16,24 +16,23 @@ class ShadowSyncEngine:
 
         logger.info("🔄 SYNC: Iniciando ritual de sincronización Espejo...")
         
-        # JERARQUÍA ESTRICTA: De lo más general (maestros) a lo más específico (datos)
-        modelos_infra = [Rango, Usuario, Proyecto]
+        # Jerarquía completa: Proveedores y Rangos deben existir antes que Secretos y Usuarios
+        modelos_prioridad = [Rango, Proveedor, Usuario, Proyecto, Dispositivo]
         modelos_datos = [Secreto, Preferencia, Conocimiento, HitoHistorial]
 
         session_local = db.SessionLocal()
         session_remote = db.SessionRemote()
 
         try:
-            # 1. INFRAESTRUCTURA
-            for modelo in modelos_infra:
+            # Sincronización de Estructura
+            for modelo in modelos_prioridad:
                 items = session_local.query(modelo).all()
                 for item in items:
                     session_remote.merge(item)
-                session_remote.commit()
-                # Re-abrimos para evitar estados 'detatched'
-                session_remote = db.SessionRemote()
+                session_remote.commit() 
+                session_remote.expunge_all() # Limpiamos memoria para evitar colisiones
 
-            # 2. DATOS
+            # Sincronización de Datos (Recuerdos, Hitos)
             for modelo in modelos_datos:
                 items = session_local.query(modelo).all()
                 for item in items:
@@ -41,16 +40,16 @@ class ShadowSyncEngine:
                         session_remote.merge(item)
                     except Exception as e:
                         session_remote.rollback()
-                        logger.warning(f"⚠️ SYNC: Saltando item de {modelo.__tablename__}: {str(e)[:40]}...")
+                        logger.warning(f"⚠️ SYNC: Saltando item en {modelo.__tablename__}: {str(e)[:50]}")
                         continue
+                session_remote.commit()
 
             session_local.commit()
-            session_remote.commit()
-            logger.success("✅ SYNC: Ritual de Espejo completado con éxito.")
+            logger.success("✅ SYNC: Ritual de Espejo completado.")
 
         except Exception as e:
             if session_remote: session_remote.rollback()
-            logger.error(f"🚨 SYNC: Fallo crítico en el ritual: {e}")
+            logger.error(f"🚨 SYNC: Fallo crítico: {e}")
         finally:
             session_local.close()
             session_remote.close()
