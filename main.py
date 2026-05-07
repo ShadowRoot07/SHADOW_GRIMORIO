@@ -70,6 +70,41 @@ def iniciar_sistema():
 
     db.init_db()
 
+    # --- BLOQUE DE DEPURACIÓN DE ENTORNO ---
+    try:
+        from src.database.models import Usuario, Proyecto, Rango
+        for motor in ["Local", "Remoto"]:
+            sess = db.SessionLocal() if motor == "Local" else (db.SessionRemote() if db.online else None)
+            if sess:
+                # 1. SEMBRAR RANGOS (Valores Maestros)
+                rangos_necesarios = [
+                    (1, "User", "Acceso básico"),
+                    (2, "Architect", "Acceso total al sistema")
+                ]
+                for r_id, r_nom, r_desc in rangos_necesarios:
+                    if not sess.query(Rango).filter_by(id=r_id).first():
+                        sess.add(Rango(id=r_id, nombre=r_nom, descripcion=r_desc))
+                        logger.info(f"🔰 RANGOS: Rango '{r_nom}' inyectado en {motor}.")
+                
+                sess.commit() # Aseguramos rangos antes de seguir
+
+                # 2. ASEGURAR USUARIO
+                if not sess.query(Usuario).filter_by(id=1).first():
+                    sess.add(Usuario(id=1, nombre="ShadowRoot07", rango_id=2))
+                    logger.info(f"👤 IDENTITY: Usuario 1 creado en {motor}.")
+                
+                # 3. ASEGURAR PROYECTO
+                if not sess.query(Proyecto).filter_by(id=1).first():
+                    sess.add(Proyecto(id=1, nombre="SHADOW_GRIMORIO", rama_actual="feature/spica-neural-link-v1"))
+                    logger.info(f"🏗️ INFRA: Proyecto Raíz creado en {motor}.")
+                
+                sess.commit()
+                sess.close()
+    except Exception as e:
+        logger.warning(f"⚠️ ENTORNO: Fallo en pre-vuelo: {e}")
+
+    # -----------------------------------------
+
     db.run_migrations()
 
     db.verificar_integridad_columnas()

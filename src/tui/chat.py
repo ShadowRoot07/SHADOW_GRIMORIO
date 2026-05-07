@@ -315,23 +315,44 @@ class ChatScreen(Screen):
                         # Creamos un worker para no bloquear la UI mientras escribimos en DB/Neon
             def guardar_en_db():
                 from src.database.manager import db
-                from src.database.models import HitoHistorial, Proyecto
+                from src.database.models import HitoHistorial, Proyecto, Conocimiento
+                from datetime import datetime
                 import subprocess
+                from loguru import logger
 
+                # 1. ABRIR SESIÓN AL INICIO
                 session = db.get_session()
+                
                 try:
-                    # Intentamos obtener el hash del último commit para el hito
+                    # 2. LÓGICA DE MEMORIA PERSONAL (CONOCIMIENTO)
+                    q_lower = query.lower()
+                    if "recuerda que" in q_lower or "guarda que" in q_lower:
+                        try:
+                            # Extraemos lo que viene después de "que"
+                            hecho = query.split("que", 1)[1].strip()
+                            
+                            nuevo_conocimiento = Conocimiento(
+                                categoria="MEMORIA",
+                                llave=f"recuerdo_{datetime.now().strftime('%H%M%S')}",
+                                valor=hecho,
+                                usuario_id=1 # ShadowRoot07
+                            )
+                            session.add(nuevo_conocimiento)
+                            logger.success(f"🧠 SPICA: Hecho registrado: {hecho}")
+                        except Exception as e:
+                            logger.error(f"⚠️ Fallo al procesar recuerdo: {e}")
+
+                    # 3. LÓGICA DE HITO (HISTORIAL DE CHAT)
                     try:
                         commit_hash = subprocess.check_output(
-                            ["git", "rev-parse", "HEAD"], 
+                            ["git", "rev-parse", "HEAD"],
                             cwd=str(self.raiz)
                         ).decode().strip()
                     except:
                         commit_hash = "unknown_shadow_pulse"
 
-                    # Buscamos el proyecto actual (o creamos uno genérico)
                     proyecto = session.query(Proyecto).filter_by(nombre="SHADOW_GRIMORIO").first()
-                    
+
                     nuevo_hito = HitoHistorial(
                         proyecto_id=proyecto.id if proyecto else None,
                         commit_hash=commit_hash,
@@ -340,11 +361,13 @@ class ChatScreen(Screen):
                         mensaje_commit="Neural Link Sync"
                     )
                     session.add(nuevo_hito)
+                    
+                    # 4. COMMIT ÚNICO PARA AMBOS
                     session.commit()
+                    
                 except Exception as db_e:
-                    # Log silencioso para no interrumpir al usuario
-                    from loguru import logger
-                    logger.error(f"Fallo al persistir hito: {db_e}")
+                    session.rollback()
+                    logger.error(f"❌ Fallo crítico al persistir: {db_e}")
                 finally:
                     session.close()
 

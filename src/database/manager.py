@@ -79,9 +79,13 @@ class DatabaseManager:
                 logger.warning("📡 DATABASE: Modo Offline activo. No se pudo alcanzar el servidor remoto.")
         else:
             logger.error("🚨 DATABASE: No se detectó DATABASE_URL en el entorno.")
+        self.verificar_integridad_columnas()
 
-    def get_session(self, force_local=False):
-        """Retorna la sesión remota si hay internet, de lo contrario la local."""
+    def get_session(self, force_local=True): # Cambiado a True por defecto
+        """
+        Retorna la sesión local por defecto para garantizar persistencia en el móvil.
+        La sincronización con la nube se delega al ShadowSyncEngine.
+        """
         if self.online and not force_local:
             return self.SessionRemote()
         return self.SessionLocal()
@@ -101,40 +105,35 @@ class DatabaseManager:
             session.close()
 
     def run_migrations(self):
-        """Ejecuta las migraciones asegurando limpieza total de drivers."""
+        """Ejecuta las migraciones de forma segura para motores duales."""
         from alembic.config import Config
         from alembic import command
-        import sys
-
-        # Función interna para limpiar rastros de Alembic
-        def purge_alembic():
-            for mod in list(sys.modules.keys()):
-                if mod.startswith('alembic'):
-                    del sys.modules[mod]
-
-        # 1. Migrar Local (SQLite)
+        
+        # 1. Configuración para Local (SQLite)
         try:
-            purge_alembic()
             logger.info("⚙️ ALCHEMY: Sincronizando Local (SQLite)...")
-            cfg_local = Config(BASE_DIR / "alembic.ini")
+            cfg_local = Config(str(BASE_DIR / "alembic.ini"))
             cfg_local.set_main_option("sqlalchemy.url", self.url_local)
-            command.upgrade(cfg_local, "head")
+            # Usamos el engine ya creado para evitar conflictos de contexto
+            with self.engine_local.begin() as connection:
+                cfg_local.attributes['connection'] = connection
+                command.upgrade(cfg_local, "head")
+            logger.success("✅ Local alineado.")
         except Exception as e:
             logger.error(f"❌ Error Local: {e}")
 
-        # 2. Migrar Remoto (PostgreSQL)
+        # 2. Configuración para Remoto (Neon/Postgres)
         if self.online and self.url_remote:
             try:
-                purge_alembic()
                 logger.info("⚙️ ALCHEMY: Sincronizando Neon (PostgreSQL)...")
-                cfg_remote = Config(BASE_DIR / "alembic.ini")
+                cfg_remote = Config(str(BASE_DIR / "alembic.ini"))
                 cfg_remote.set_main_option("sqlalchemy.url", self.url_remote)
-                # Aquí está el truco: forzamos a que no use el cache previo
-                command.upgrade(cfg_remote, "head")
-                logger.success("✅ Neon actualizado con esquema Postgres.")
+                with self.engine_remote.begin() as connection:
+                    cfg_remote.attributes['connection'] = connection
+                    command.upgrade(cfg_remote, "head")
+                logger.success("✅ Neon actualizado.")
             except Exception as e:
-                # Si esto falla, no bloqueamos el inicio de la app
-                logger.warning(f"⚠️ Neon desincronizado: {e}")
+                logger.warning(f"⚠️ Neon desincronizado (No crítico): {e}")
 
 
     def shutdown(self):
@@ -171,25 +170,29 @@ class DatabaseManager:
     def verificar_integridad_columnas(self):
         """Asegura que las columnas críticas existan en todos los motores."""
         from sqlalchemy import text
-        
+
         columnas_necesarias = [
             ("proyectos", "rama_actual", "VARCHAR"),
-            ("proyectos", "last_sync", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            ("proyectos", "last_sync", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            # --- NUEVAS COLUMNAS PARA LA MEMORIA ---
+            ("conocimientos", "categoria", "VARCHAR DEFAULT 'GENERAL'"),
+            ("conocimientos", "llave", "VARCHAR"),
+            ("conocimientos", "valor", "TEXT")
         ]
 
         motores = [("Local", self.engine_local)]
-        if self.online: motores.append(("Neon", self.engine_remote))
+        if self.online and self.engine_remote: 
+            motores.append(("Neon", self.engine_remote))
 
         for motor_name, engine in motores:
+            if not engine: continue
             with engine.connect() as conn:
                 for tabla, col, tipo in columnas_necesarias:
                     try:
-                        # Intentar una consulta rápida a la columna
                         conn.execute(text(f"SELECT {col} FROM {tabla} LIMIT 1"))
                     except Exception:
-                        # Si falla la consulta, la columna no existe: la creamos
                         try:
-                            conn.rollback() # Limpiar estado de falla
+                            conn.rollback() 
                             conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo};"))
                             conn.commit()
                             logger.success(f"🛠️ INTEGRIDAD: Columna '{col}' inyectada en {motor_name}.")

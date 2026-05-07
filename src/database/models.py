@@ -30,13 +30,16 @@ class Usuario(Base):
     conocimientos = relationship("Conocimiento", back_populates="usuario")
 
 
+
 class Conocimiento(Base):
     __tablename__ = "conocimientos"
     id = Column(Integer, primary_key=True)
-    tecnologia = Column(String)
-    nivel = Column(Integer, default=0)
+    categoria = Column(String, default="GENERAL") # Ej: "PERSONAL", "STACK", "PREFERENCIA"
+    llave = Column(String)    # Ej: "lenguaje_favorito"
+    valor = Column(Text)      # Ej: "Python"
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
     usuario = relationship("Usuario", back_populates="conocimientos")
 
 class Dispositivo(Base):

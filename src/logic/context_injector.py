@@ -49,29 +49,42 @@ class ContextInjector:
         return "Sin eventos recientes."
 
     @staticmethod
-    def obtener_memoria_proyectos(n: int = 3) -> str:
-        """Recupera los últimos hitos de desarrollo de la base de datos."""
-        from src.database.models import HitoHistorial, Proyecto
+    def obtener_conocimiento_personal() -> str:
+        """Recupera hechos guardados sobre el usuario."""
+        from src.database.models import Conocimiento
+        session = db.get_session(force_local=True)
+        try:
+            hechos = session.query(Conocimiento).all()
+            if not hechos:
+                return "No hay registros de conocimiento personal."
+            
+            resumen = ["[NÚCLEO_DE_CONOCIMIENTO]"]
+            for h in hechos:
+                resumen.append(f"• {h.categoria}[{h.llave}]: {h.valor}")
+            return "\n".join(resumen)
+        except Exception as e:
+            return f"Error en Bóveda de Conocimiento: {e}"
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_memoria_proyectos(n: int = 5) -> str:
+        from src.database.models import HitoHistorial
         session = db.get_session(force_local=True)
         try:
             hitos = session.query(HitoHistorial).order_by(HitoHistorial.fecha.desc()).limit(n).all()
             if not hitos:
-                return "No hay hitos registrados en la memoria de largo plazo."
-            
-            memoria = ["[MEMORIA_DE_OPERACIONES]"]
-            for h in hitos:
-                # Obtenemos el nombre del proyecto si existe
-                proyecto_nom = h.proyecto.nombre if h.proyecto else "Global"
-                memoria.append(f"• Proyecto: {proyecto_nom} | Commit: {h.commit_hash[:7]}")
-                memoria.append(f"  USR: {h.prompt_usuario[:60]}...")
-                memoria.append(f"  IA: {h.respuesta_ia[:60]}...")
+                return "No hay hitos registrados."
+
+            memoria = ["[HISTORIAL_RECIENTE]"]
+            for h in reversed(hitos): # Invertimos para que el más reciente sea el último que lea
+                memoria.append(f"USR: {h.prompt_usuario}") # <--- Quitamos el recorte
+                memoria.append(f"IA: {h.respuesta_ia}")   # <--- Quitamos el recorte
             return "\n".join(memoria)
         except Exception as e:
-            logger.warning(f"Fallo al leer hitos: {e}")
-            return "Error al acceder a la memoria de hitos."
+            return "Error al acceder a la memoria."
         finally:
             session.close()
-
 
     @staticmethod
     def obtener_contexto_completo(agente_id: str = None, query_usuario: str = "") -> str:
@@ -100,6 +113,10 @@ class ContextInjector:
             # 2. CONOCIMIENTO LOCAL (Archivos y Lexicon)
             prompt += f"### MAPA_LÉXICO ###\n{ContextInjector.obtener_mapa_lexico()}\n\n"
             prompt += "- IDIOMA: ESPAÑOL (ESTRICTO)\n"
+            prompt += f"{ContextInjector.obtener_conocimiento_personal()}\n\n"
+        
+            # INYECCIÓN DE HISTORIAL
+            prompt += f"{ContextInjector.obtener_memoria_proyectos(5)}\n\n"
 
             # 3. MODO DE OPERACIÓN
             if agente_id and agente_id.upper() in AGENT_IDENTITIES:
