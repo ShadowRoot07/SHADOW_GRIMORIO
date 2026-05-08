@@ -51,6 +51,8 @@ class GroqOraculo:
                             "llama-3.3-70b-versatile",
                             "llama-3.1-70b-versatile",
                             "llama-3.1-8b-instant",
+                            "llama-3.2-11b-vision-preview",
+                            "llama-3.2-3b-preview",
                             "mixtral-8x7b-32768",
                             "gemma2-9b-it"
                         ]
@@ -103,7 +105,12 @@ class GroqOraculo:
 
         reintentos = 0
         while reintentos < config.groq_retry_limit:
-            await asyncio.sleep(config.groq_cooldown * (reintentos + 1))
+            # Backoff Exponencial: 2s, 4s, 8s...
+            espera = config.groq_cooldown * (2 ** reintentos)
+            if reintentos > 0:
+                logger.info(f"⏳ Reintento {reintentos}/{config.groq_retry_limit}. Esperando {espera}s...")
+            
+            await asyncio.sleep(espera)
 
             async with aiohttp.ClientSession() as session:
                 try:
@@ -118,22 +125,33 @@ class GroqOraculo:
                             data = await resp.json()
                             return data['choices'][0]['message']['content']
 
-                        elif resp.status == 400:
-                            error_data = await resp.json()
-                            msg = error_data.get('error', {}).get('message', 'Error desconocido')
-                            if "decommissioned" in msg.lower():
-                                self.modelos_prohibidos.add(modelo_activo)
-                            return f"ERROR 400: {msg[:100]}"
-
                         elif resp.status == 429:
+                            # Rate Limit: Groq nos dice cuánto esperar en los headers
+                            retry_after = resp.headers.get("Retry-After")
+                            if retry_after:
+                                await asyncio.sleep(float(retry_after))
+                            reintentos += 1
+                            continue
+
+                        elif resp.status in [400, 404]:
+                            error_data = await resp.json()
+                            msg = error_data.get('error', {}).get('message', '')
+                            # Si el modelo murió, lo sacamos de la lista y probamos otro
+                            if "model" in msg.lower() or "not found" in msg.lower():
+                                logger.warning(f"🚫 Modelo {modelo_activo} fallido. Cambiando...")
+                                self.modelos_prohibidos.add(modelo_activo)
+                                modelos_nuevos = await self.obtener_modelos_disponibles()
+                                if modelos_nuevos:
+                                    payload["model"] = modelos_nuevos[0]
                             reintentos += 1
                             continue
 
                         else:
-                            return f"ERROR: Código {resp.status} de Groq."
+                            logger.error(f"❌ Error inesperado: {resp.status}")
+                            reintentos += 1
 
                 except Exception as e:
-                    logger.error(f"Fallo de conexión en Termux: {e}")
+                    logger.error(f"📡 Fallo de conexión en Termux: {e}")
                     reintentos += 1
 
         return "Se agotaron los reintentos tras bloqueos del Oráculo."

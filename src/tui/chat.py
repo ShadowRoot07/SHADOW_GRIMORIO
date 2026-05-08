@@ -4,6 +4,8 @@ from textual import events
 from textual.screen import Screen
 from textual.widgets import TextArea, RichLog, Header, Footer, Label, Button, ProgressBar, Static
 from textual.containers import Container, Horizontal, ScrollableContainer
+from rich.markup import escape
+from rich.text import Text
 from textual.app import ComposeResult
 
 # Importamos el cliente de Groq existente
@@ -267,8 +269,12 @@ class ChatScreen(Screen):
 
             for i, letra in enumerate(texto):
                 acumulado += letra
-                contenido_seguro = f"{prefix}{escape(acumulado)}█"
-                internal_static.update(contenido_seguro)
+                renderizado = Text.assemble(
+                    ("Oráculo: ", "bold purple"),
+                    (acumulado, "default"),
+                    ("█", "blink bold blue")
+                )
+                internal_static.update(renderizado)
 
                 progreso = 50 + int((i / len(texto)) * 50)
                 self.progress.update(progress=progreso)
@@ -277,7 +283,7 @@ class ChatScreen(Screen):
                 container.scroll_end(animate=False)
 
                 # Ajuste de delay para el ZTE
-                delay = 0.04 if len(texto) < 500 else 0.01 
+                delay = 0.04 if len(texto) < 500 else 0.001 
                 
                 await asyncio.sleep(delay)
 
