@@ -64,7 +64,7 @@ class WatchdogErrorModal(ModalScreen):
                 yield Static(error_msg, id="wd_body")
             
             with Grid(id="wd_footer"):
-                yield Button("ENTENDIDO (CERRAR)", variant="error", id="close_wd")
+                yield Button("ENTENDIDO (CERRAR)", variant="error", id="close_jn")
 
     def on_mount(self) -> None:
         container = self.query_one("#watchdog_modal")
