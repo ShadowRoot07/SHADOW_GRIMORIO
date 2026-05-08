@@ -290,10 +290,8 @@ class ChatScreen(Screen):
                 await asyncio.sleep(delay)
 
             # --- TRASPASO AL LOG PRINCIPAL ---
-            # Usamos call_from_thread por si acaso hay otros procesos escribiendo
-            self.app.call_from_thread(
-                self.console.write, f"[bold purple]Oráculo:[/] {escape(texto)}"
-            )
+            self.console.write(f"[bold purple]Oráculo:[/] {escape(texto)}")
+
 
             # Limpieza de UI
             internal_static.update("")
@@ -352,6 +350,7 @@ class ChatScreen(Screen):
                             self.console.write, 
                             f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso en {self.app.cwd_usuario}:\n{detalles}"
                         )
+
                     elif resultado.get("status") == "error" and "No se detectó estructura JSON" not in resultado["message"]:
                         self.app.call_from_thread(
                             self.console.write, f"[bold red]🚨 ARCHITECT ERROR:[/] {resultado['message']}"
