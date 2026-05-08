@@ -314,13 +314,17 @@ class ChatScreen(Screen):
             # --- LÓGICA DE CONSTRUCCIÓN (MOTOR) ---
             def ejecutar_construccion():
                 from src.logic.architect_core import architect
-                # Intentamos planificar y procesar la respuesta
-                resultado = architect.procesar_instruccion(respuesta)
                 
+                # MODIFICACIÓN AQUÍ: Pasamos el cwd_usuario de la app
+                resultado = architect.procesar_instruccion(
+                    respuesta, 
+                    cwd_usuario=self.app.cwd_usuario
+                )
+
                 if resultado.get("status") == "success":
                     detalles = "\n".join(resultado.get("details", []))
                     self.app.call_from_thread(
-                        self.console.write, f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso:\n{detalles}"
+                        self.console.write, f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso en {self.app.cwd_usuario}:\n{detalles}"
                     )
                 elif resultado.get("status") == "error" and "No se detectó estructura JSON" not in resultado["message"]:
                     self.app.call_from_thread(

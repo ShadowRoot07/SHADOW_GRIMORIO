@@ -11,6 +11,7 @@ from src.database.manager import db
 from src.database.models import Usuario
 from src.tui.app import ShadowGrimorio
 from loguru import logger
+import os
 
 log_capture = io.StringIO()
 
@@ -53,7 +54,10 @@ def loop_supervivencia():
         time.sleep(5) # Aumentado para ahorrar batería en ZTE
 
 def iniciar_sistema():
-    global db 
+    global db
+
+    punto_ejecucion = os.getcwd() 
+    logger.info(f"📍 PUNTO DE INSERCIÓN: {punto_ejecucion}")
 
     from src.logic.config import BASE_DIR
     (BASE_DIR / "logs").mkdir(exist_ok=True)
@@ -120,9 +124,9 @@ def iniciar_sistema():
             db.verificar_integridad_columnas()
         es_nuevo = ProfileManager.es_primera_vez()
         
-        app = ShadowGrimorio(es_primera_vez=es_nuevo)
-        app.run()
-        
+        app = ShadowGrimorio(es_primera_vez=es_nuevo, cwd_inicio=punto_ejecucion)
+        app.run() 
+
     except Exception as e:
         logger.exception(f"Fallo crítico: {e}")
     finally:

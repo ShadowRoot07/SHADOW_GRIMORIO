@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 from textual import events
@@ -44,6 +45,10 @@ class ShadowGrimorio(App):
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
+        
+        # Corrección: Ahora sí recibe cwd_inicio y conoce 'os'
+        self.cwd_usuario = cwd_inicio or os.getcwd()
+        logger.debug(f"⚙️ APP CONTEXT: Operando en {self.cwd_usuario}")
 
         self.reports = {
             "void": self.raiz_proyecto / "logs" / "void_hunter_report.json",
