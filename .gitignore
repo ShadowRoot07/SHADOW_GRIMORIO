@@ -34,6 +34,7 @@ secrets.yaml
 # La base de datos local SQLite no debe subirse (cada usuario tiene la suya)
 data/*.db
 data/*.sqlite3
+data/*db*
 # Los logs pueden contener info sensible del sistema
 *.log
 logs/
