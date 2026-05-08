@@ -308,11 +308,29 @@ class ChatScreen(Screen):
 
             # Llamada al API
             respuesta = await oraculo.consultar(query, agente_id="SPICA")
-
             # DISPARAR ANIMACIÓN (Sin await para que el worker tome el control)
             self.tipear_respuesta(respuesta)
 
-                        # Creamos un worker para no bloquear la UI mientras escribimos en DB/Neon
+            # --- LÓGICA DE CONSTRUCCIÓN (MOTOR) ---
+            def ejecutar_construccion():
+                from src.logic.architect_core import architect
+                # Intentamos planificar y procesar la respuesta
+                resultado = architect.procesar_instruccion(respuesta)
+                
+                if resultado.get("status") == "success":
+                    detalles = "\n".join(resultado.get("details", []))
+                    self.app.call_from_thread(
+                        self.console.write, f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso:\n{detalles}"
+                    )
+                elif resultado.get("status") == "error" and "No se detectó estructura JSON" not in resultado["message"]:
+                    self.app.call_from_thread(
+                        self.console.write, f"[bold red]🚨 ARCHITECT ERROR:[/] {resultado['message']}"
+                    )
+
+            # Ejecutamos el motor en un hilo separado para no congelar la TUI
+            self.run_worker(ejecutar_construccion, thread=True)
+
+            # Creamos un worker para no bloquear la UI mientras escribimos en DB/Neon
             def guardar_en_db():
                 from src.database.manager import db
                 from src.database.models import HitoHistorial, Proyecto, Conocimiento

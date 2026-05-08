@@ -64,7 +64,7 @@ class WatchdogErrorModal(ModalScreen):
                 yield Static(error_msg, id="wd_body")
             
             with Grid(id="wd_footer"):
-                yield Button("ENTENDIDO (CERRAR)", variant="error", id="close_jn")
+                yield Button("ENTENDIDO (CERRAR)", variant="error", id="btn_close_watchdog")
 
     def on_mount(self) -> None:
         container = self.query_one("#watchdog_modal")
@@ -73,9 +73,9 @@ class WatchdogErrorModal(ModalScreen):
         self.query_one("#wd_title").styles.color = "#FF3131"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn_close_watchdog": # ID más específico
+        # Ahora sí coinciden
+        if event.button.id == "btn_close_watchdog":
             self.dismiss()
-
 
     CSS = """
     #watchdog_modal {
