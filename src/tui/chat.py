@@ -107,8 +107,8 @@ class ChatScreen(Screen):
         width: 100%;
         /* Altura fija para que el scroll funcione correctamente */
         height: 10; 
-        background: #0a0a0a;
-        color: #BB00FF;
+        background: #050505;
+        color: #00FF00;
         border-top: hkey #BB00FF;
         border-bottom: hkey #BB00FF;
         padding: 0 1;
@@ -117,6 +117,12 @@ class ChatScreen(Screen):
         /* Forzamos que sea un contenedor con scroll */
         overflow-y: scroll;
         scrollbar-gutter: stable;
+    }
+
+    #typing_buffer_internal {
+        width: 100%;
+        height: auto;
+        color: #00FF00; /* Forzamos verde neón para el contenido */
     }
     """
 
@@ -254,126 +260,125 @@ class ChatScreen(Screen):
 
     def tipear_respuesta(self, texto: str) -> None:
         """
-        Animación optimizada para ShadowRoot: 
-        Usa un contenedor con scroll dedicado.
+        Animación optimizada para ShadowRoot:
+        Usa un worker asíncrono para no bloquear el loop principal.
         """
         async def _animar():
-            # El contenedor padre que tiene el scroll
             container = self.query_one("#typing_overlay")
-            # El static interno donde inyectamos el texto
             internal_static = self.query_one("#typing_buffer_internal")
-            
-            container.styles.display = "block"
-            prefix = "[bold purple]Oráculo:[/] "
-            acumulado = ""
 
+            container.styles.display = "block"
+            acumulado = ""
+            internal_static.update("")
+
+            # Animación de tipeo
             for i, letra in enumerate(texto):
                 acumulado += letra
                 renderizado = Text.assemble(
-                    ("Oráculo: ", "bold purple"),
-                    (acumulado, "default"),
-                    ("█", "blink bold blue")
+                    ("Oráculo: ", "bold #BB00FF"),
+                    (acumulado, "#00FF00"),
+                    ("█", "bold white blink")
                 )
                 internal_static.update(renderizado)
-
+                
                 progreso = 50 + int((i / len(texto)) * 50)
                 self.progress.update(progress=progreso)
-
-                # Forzamos el scroll al final del CONTENEDOR
                 container.scroll_end(animate=False)
 
-                # Ajuste de delay para el ZTE
-                delay = 0.04 if len(texto) < 500 else 0.001 
-                
+                # Delay ultra-rápido para el ZTE en textos largos
+                delay = 0.03 if len(texto) < 300 else 0.0005
                 await asyncio.sleep(delay)
 
-                # Refresco visual cada 3 caracteres
-                if i % 3 == 0:
-                    self.app.refresh()
+            # --- TRASPASO AL LOG PRINCIPAL ---
+            # Usamos call_from_thread por si acaso hay otros procesos escribiendo
+            self.app.call_from_thread(
+                self.console.write, f"[bold purple]Oráculo:[/] {escape(texto)}"
+            )
 
-            await asyncio.sleep(0.2)
-            self.console.write(f"{prefix}{escape(texto)}")
-            
-            # Limpieza
+            # Limpieza de UI
             internal_static.update("")
             container.styles.display = "none"
             self.progress.styles.display = "none"
             self.console.scroll_end()
 
-        self.run_worker(_animar(), thread=True)
+        # thread=False es vital aquí para que asyncio.sleep funcione
+        self.run_worker(_animar(), thread=False, name="animador_oraculo")
 
     async def consultar_oraculo(self, query: str):
         self.progress = self.query_one("#chat_progress")
         self.progress.styles.display = "block"
         self.progress.update(progress=10)
-        
+
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
 
         try:
-            # Fase de pensamiento (Barra moviéndose)
+            # 1. Fase de pensamiento visual
             for p in range(15, 46, 10):
                 self.progress.update(progress=p)
                 await asyncio.sleep(0.05)
 
-            # Llamada al API
+            # 2. Llamada al Oráculo (Groq API)
             respuesta = await oraculo.consultar(query, agente_id="SPICA")
-            # DISPARAR ANIMACIÓN (Sin await para que el worker tome el control)
+            
+            # 3. Disparar la animación de tipeo (Asíncrona, sin hilos)
             self.tipear_respuesta(respuesta)
 
-            # --- LÓGICA DE CONSTRUCCIÓN (MOTOR) ---
-            def ejecutar_construccion():
+            # 4. Orquestación de Procesos Pesados (Architect + DB)
+            def shadow_background_process():
+                """
+                Mantiene todas tus funciones internas: Architect, 
+                Memoria Cognitiva y Registro de Hitos.
+                """
+                import time
+                import subprocess
+                from datetime import datetime
+                from loguru import logger
                 from src.logic.architect_core import architect
-                
-                # MODIFICACIÓN AQUÍ: Pasamos el cwd_usuario de la app
-                resultado = architect.procesar_instruccion(
-                    respuesta, 
-                    cwd_usuario=self.app.cwd_usuario
-                )
-
-                if resultado.get("status") == "success":
-                    detalles = "\n".join(resultado.get("details", []))
-                    self.app.call_from_thread(
-                        self.console.write, f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso en {self.app.cwd_usuario}:\n{detalles}"
-                    )
-                elif resultado.get("status") == "error" and "No se detectó estructura JSON" not in resultado["message"]:
-                    self.app.call_from_thread(
-                        self.console.write, f"[bold red]🚨 ARCHITECT ERROR:[/] {resultado['message']}"
-                    )
-
-            # Ejecutamos el motor en un hilo separado para no congelar la TUI
-            self.run_worker(ejecutar_construccion, thread=True)
-
-            # Creamos un worker para no bloquear la UI mientras escribimos en DB/Neon
-            def guardar_en_db():
                 from src.database.manager import db
                 from src.database.models import HitoHistorial, Proyecto, Conocimiento
-                from datetime import datetime
-                import subprocess
-                from loguru import logger
 
-                # 1. ABRIR SESIÓN AL INICIO
-                session = db.get_session()
-                
+                # Delay estratégico para que la animación fluya primero
+                time.sleep(0.8)
+
+                # --- [A] MOTOR DE CONSTRUCCIÓN (ARCHITECT) ---
                 try:
-                    # 2. LÓGICA DE MEMORIA PERSONAL (CONOCIMIENTO)
+                    resultado = architect.procesar_instruccion(
+                        respuesta,
+                        cwd_usuario=self.app.cwd_usuario
+                    )
+                    if resultado.get("status") == "success":
+                        detalles = "\n".join(resultado.get("details", []))
+                        self.app.call_from_thread(
+                            self.console.write, 
+                            f"[bold green]🏗️ ARCHITECT:[/] Despliegue exitoso en {self.app.cwd_usuario}:\n{detalles}"
+                        )
+                    elif resultado.get("status") == "error" and "No se detectó estructura JSON" not in resultado["message"]:
+                        self.app.call_from_thread(
+                            self.console.write, f"[bold red]🚨 ARCHITECT ERROR:[/] {resultado['message']}"
+                        )
+                except Exception as arch_e:
+                    logger.error(f"Fallo en Architect: {arch_e}")
+
+                # --- [B] PERSISTENCIA Y MEMORIA (DATABASE) ---
+                session = db.get_session()
+                try:
+                    # Lógica de Memoria Personal
                     q_lower = query.lower()
                     if "recuerda que" in q_lower or "guarda que" in q_lower:
                         try:
-                            # Extraemos lo que viene después de "que"
                             hecho = query.split("que", 1)[1].strip()
-                            
                             nuevo_conocimiento = Conocimiento(
                                 categoria="MEMORIA",
                                 llave=f"recuerdo_{datetime.now().strftime('%H%M%S')}",
                                 valor=hecho,
-                                usuario_id=1 # ShadowRoot07
+                                usuario_id=1
                             )
                             session.add(nuevo_conocimiento)
                             logger.success(f"🧠 SPICA: Hecho registrado: {hecho}")
                         except Exception as e:
                             logger.error(f"⚠️ Fallo al procesar recuerdo: {e}")
 
-                    # 3. LÓGICA DE HITO (HISTORIAL DE CHAT)
+                    # Lógica de Hito (Git Sync)
                     try:
                         commit_hash = subprocess.check_output(
                             ["git", "rev-parse", "HEAD"],
@@ -383,7 +388,6 @@ class ChatScreen(Screen):
                         commit_hash = "unknown_shadow_pulse"
 
                     proyecto = session.query(Proyecto).filter_by(nombre="SHADOW_GRIMORIO").first()
-
                     nuevo_hito = HitoHistorial(
                         proyecto_id=proyecto.id if proyecto else None,
                         commit_hash=commit_hash,
@@ -393,17 +397,17 @@ class ChatScreen(Screen):
                     )
                     session.add(nuevo_hito)
                     
-                    # 4. COMMIT ÚNICO PARA AMBOS
+                    # Commit final de todas las operaciones de DB
                     session.commit()
-                    
+
                 except Exception as db_e:
                     session.rollback()
                     logger.error(f"❌ Fallo crítico al persistir: {db_e}")
                 finally:
                     session.close()
 
-            self.run_worker(guardar_en_db, thread=True)
-
+            # Lanzamos todo en un solo worker de hilo para no saturar el ZTE
+            self.run_worker(shadow_background_process, thread=True, name="shadow_core_task")
 
         except Exception as e:
             self.console.write(f"[bold red]⚠ ERROR DE ENLACE:[/] {e}")
