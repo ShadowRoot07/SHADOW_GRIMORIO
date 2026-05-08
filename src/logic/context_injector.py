@@ -123,8 +123,17 @@ class ContextInjector:
                 info = AGENT_IDENTITIES[agente_id.upper()]
                 prompt += f"[MODO_AGENTE: {agente_id.upper()}]\n"
                 prompt += f"OBJETIVO: {info.get('prompt', 'Asistente técnico.')}\n"
+
+                                # --- INYECCIÓN CRÍTICA PARA SPICA ---
+                if agente_id.upper() == "SPICA":
+                    prompt += "\n[PROTOCOLO_ARCHITECT_ACTIVO]\n"
+                    prompt += "Si el usuario pide crear/editar código, genera un bloque JSON puro al final de tu respuesta:\n"
+                    prompt += 'CREAR: {"folders": ["path/"], "files": [{"path": "file.py", "content": "..."}]}\n'
+                    prompt += 'EDITAR: {"patches": [{"path": "file.py", "search": "old", "replace": "new"}]}\n'
             else:
+                # Fallback para el oráculo general
                 prompt += "MODO: ORÁCULO CENTRAL.\n"
+                prompt += "REGLA: Si el usuario pide construir, usa el formato JSON del ARCHITECT.\n"
                 prompt += "REGLA: Responde con precisión quirúrgica. Si el usuario pide crear o construir, "
                 prompt += "puedes sugerir estructuras JSON para el ARCHITECT.\n"
 
