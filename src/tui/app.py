@@ -39,14 +39,14 @@ class ShadowGrimorio(App):
         ("m", "show_map", "Mapa"),
         ("escape", "back", "Volver")
     ]
-    def __init__(self, es_primera_vez: bool = False):
+    def __init__(self, es_primera_vez: bool = False, cwd_inicio: str = None): 
         super().__init__()
         self.es_primera_vez = es_primera_vez
         self.nombre_tema = config.shadow_theme
         self.tema = THEMES.get(self.nombre_tema, THEMES["CYBERPUNK"])
         self.raiz_proyecto = Path(__file__).resolve().parents[2]
         
-        # Corrección: Ahora sí recibe cwd_inicio y conoce 'os'
+        # Ahora 'cwd_inicio' sí existirá porque lo pasamos por argumento
         self.cwd_usuario = cwd_inicio or os.getcwd()
         logger.debug(f"⚙️ APP CONTEXT: Operando en {self.cwd_usuario}")
 

@@ -25,7 +25,7 @@ def graceful_shutdown(signum=None, frame=None):
             print(f"\n[!] Cerrando agentes activos: {', '.join(activos)}")
     except: pass
 
-    
+
     # Intentar sincronización antes de apagar todo
     try:
         from src.logic.sync_engine import sync_engine
@@ -36,7 +36,7 @@ def graceful_shutdown(signum=None, frame=None):
 
     if ghost:
         ghost.burn_session()
-        
+
     db.shutdown()
     logger.info("--- 💀 SHADOW_GRIMORIO FUERA DE LÍNEA (EXIT EXITOSO) 💀 ---")
     sys.exit(0)

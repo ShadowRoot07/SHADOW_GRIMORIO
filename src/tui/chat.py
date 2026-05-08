@@ -267,7 +267,8 @@ class ChatScreen(Screen):
 
             for i, letra in enumerate(texto):
                 acumulado += letra
-                internal_static.update(f"{prefix}{acumulado}█")
+                contenido_seguro = f"{prefix}{escape(acumulado)}█"
+                internal_static.update(contenido_seguro)
 
                 progreso = 50 + int((i / len(texto)) * 50)
                 self.progress.update(progress=progreso)
@@ -276,14 +277,16 @@ class ChatScreen(Screen):
                 container.scroll_end(animate=False)
 
                 # Ajuste de delay para el ZTE
-                await asyncio.sleep(0.04)
+                delay = 0.04 if len(texto) < 500 else 0.01 
                 
+                await asyncio.sleep(delay)
+
                 # Refresco visual cada 3 caracteres
                 if i % 3 == 0:
                     self.app.refresh()
 
             await asyncio.sleep(0.2)
-            self.console.write(f"{prefix}{texto}")
+            self.console.write(f"{prefix}{escape(texto)}")
             
             # Limpieza
             internal_static.update("")
