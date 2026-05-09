@@ -11,6 +11,20 @@ from textual.app import ComposeResult
 # Importamos el cliente de Groq existente
 from src.api.groq_client import oraculo
 
+SHADOW_CONSTRUCT_PROTOCOL = """
+### ARCHITECT_PROTOCOL_ACTIVE ###
+INSTRUCCIÓN: Actúa como un Ingeniero de Sistemas Senior. 
+FORMATO REQUERIDO: Debes responder ÚNICAMENTE con un bloque JSON válido para ArchitectCore.
+ESTRUCTURA JSON:
+{
+  "project_name": "SHADOW_GRIMORIO",
+  "actions": [
+    {"action": "create"|"update", "path": "ruta/al/archivo", "code": "contenido_del_codigo"}
+  ]
+}
+PROHIBIDO: No incluyas explicaciones, saludos ni markdown fuera del bloque JSON.
+"""
+
 class ChatScreen(Screen):
     """El Oráculo: Inteligencia Operativa Conversacional con UX Mejorada."""
 
@@ -234,18 +248,28 @@ class ChatScreen(Screen):
             event.prevent_default()
 
     async def action_enviar_mensaje(self) -> None:
-        """Flujo de salida de datos: Limpieza y envío."""
-        text = self.chat_input.text.strip()
-        if not text:
+        """Flujo de salida de datos: Limpieza y envío con protocolo."""
+        # Cambiamos 'text' por 'raw_text' para que coincida con la lógica de abajo
+        raw_text = self.chat_input.text.strip() 
+        if not raw_text:
             return
 
-        # Limpiar interfaz antes de procesar
+        # 1. Detectar intención de construcción
+        triggers = ["materializa", "actualiza", "modifica", "construye", "crea un script"]
+        query_final = raw_text
+        
+        # Ahora 'raw_text' sí existe y no dará NameError
+        if any(trigger in raw_text.lower() for trigger in triggers):
+            # Inyectamos el protocolo (asegúrate de tener SHADOW_CONSTRUCT_PROTOCOL definido)
+            query_final = f"{raw_text}\n\n{SHADOW_CONSTRUCT_PROTOCOL}"
+
+        # 2. Limpiar interfaz
         self.chat_input.text = ""
         self.chat_input.cursor_location = (0, 0)
         self.query_one("#input_container").styles.height = 3
-        
-        # Iniciar consulta
-        await self.consultar_oraculo(text)
+
+        # 3. Enviar al oráculo (Asegúrate de que consultar_oraculo acepte display_text)
+        await self.consultar_oraculo(query_final, display_text=raw_text)
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
         """Efecto visual cuando el input está activo."""
@@ -302,22 +326,30 @@ class ChatScreen(Screen):
         # thread=False es vital aquí para que asyncio.sleep funcione
         self.run_worker(_animar(), thread=False, name="animador_oraculo")
 
-    async def consultar_oraculo(self, query: str):
+    async def consultar_oraculo(self, query: str, display_text: str = None):
+        """
+        Consulta al Oráculo enviando el prompt completo pero 
+        mostrando opcionalmente un texto simplificado en el TUI.
+        """
         self.progress = self.query_one("#chat_progress")
         self.progress.styles.display = "block"
         self.progress.update(progress=10)
 
-        self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
+        # Usamos el texto de visualización si existe, si no, la query original
+        visual_text = display_text if display_text else query
+        self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {visual_text}")
 
         try:
-            # 1. Fase de pensamiento visual
+            # Fase de pensamiento visual
             for p in range(15, 46, 10):
                 self.progress.update(progress=p)
                 await asyncio.sleep(0.05)
 
-            # 2. Llamada al Oráculo (Groq API)
+            # 2. Llamada al Oráculo (Groq API) - Aquí enviamos la query completa con el protocolo
             respuesta = await oraculo.consultar(query, agente_id="SPICA")
             
+            # ... (el resto del código se mantiene igual)
+ 
             # 3. Disparar la animación de tipeo (Asíncrona, sin hilos)
             self.tipear_respuesta(respuesta)
 
