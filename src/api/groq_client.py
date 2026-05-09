@@ -47,7 +47,10 @@ class GroqOraculo:
     async def obtener_modelos_disponibles(self):
         """Filtra modelos para usar solo LLMs modernos, probados y aceptados."""
         url = f"{self.BASE_URL}/models"
+<<<<<<< HEAD
         await asyncio.sleep(0.5)
+=======
+>>>>>>> final-fix-branch
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -100,7 +103,11 @@ class GroqOraculo:
         contexto_raw = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
         logger.debug(f"Modelo: {modelo_activo} | Agente: {agente_id}")
 
+<<<<<<< HEAD
         contexto_sistema = self._recortar_contexto(str(contexto_raw).strip(), max_chars=12000)
+=======
+        contexto_sistema = self._recortar_contexto(str(contexto_raw).strip(), max_chars=9000)
+>>>>>>> final-fix-branch
 
         url = f"{self.BASE_URL}/chat/completions"
 
