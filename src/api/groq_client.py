@@ -51,14 +51,20 @@ class GroqOraculo:
 
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers, timeout=config.groq_timeout) as resp:
+                custom_timeout = aiohttp.ClientTimeout(total=60)
+                async with session.post(
+            url,
+            data=json.dumps(payload),
+            headers=self.headers,
+            timeout=custom_timeout # <--- Aplicar aquí
+        ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
 
                         modelos_permitidos = [
+                            "llama-3.1-8b-instant",
                             "llama-3.3-70b-versatile",
                             "llama-3.1-70b-versatile",
-                            "llama-3.1-8b-instant",
                             "llama-3.2-11b-vision-preview",
                             "llama-3.2-3b-preview",
                             "mixtral-8x7b-32768",
@@ -94,7 +100,7 @@ class GroqOraculo:
         contexto_raw = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
         logger.debug(f"Modelo: {modelo_activo} | Agente: {agente_id}")
 
-        contexto_sistema = self._recortar_contexto(str(contexto_raw).strip(), max_chars=18000)
+        contexto_sistema = self._recortar_contexto(str(contexto_raw).strip(), max_chars=12000)
 
         url = f"{self.BASE_URL}/chat/completions"
 
