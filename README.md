@@ -81,3 +81,5 @@ ln -sf $(pwd)/shadow $PREFIX/bin/shadow
 - Estado: NÚCLEO ESTABLE - BETA V1.0
 
 *"Todo lo pesado que voy a estudiar o construir es procesado por GitHub Actions. Mi dispositivo es solo el portal."*
+
+
