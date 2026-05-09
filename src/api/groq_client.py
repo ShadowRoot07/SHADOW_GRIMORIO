@@ -28,6 +28,14 @@ class GroqOraculo:
         except AttributeError:
             return str(config.groq_api_key)
 
+    def _recortar_contexto(self, texto: str, max_chars: int = 15000) -> str:
+        """Evita el error 413 recortando el contexto si es excesivo."""
+        if len(texto) > max_chars:
+            logger.warning(f"⚠️ CONTEXTO EXCESIVO ({len(texto)} chars). Recortando a {max_chars}...")
+            return texto[:max_chars] + "\n[...Contexto truncado por seguridad...]"
+        return texto
+
+
     @property
     def headers(self):
         """Headers dinámicos para asegurar que siempre usen la llave más reciente."""
@@ -82,21 +90,18 @@ class GroqOraculo:
 
         modelos_disponibles = await self.obtener_modelos_disponibles()
         modelo_activo = config.groq_model if config.groq_model in modelos_disponibles else modelos_disponibles[0]
-
+        
         contexto_raw = ContextInjector.obtener_contexto_completo(agente_id, query_usuario=prompt)
         logger.debug(f"Modelo: {modelo_activo} | Agente: {agente_id}")
 
-        if not contexto_raw or not isinstance(contexto_raw, str):
-            contexto_sistema = "Eres Shadow Grimorio, un orquestador de agentes de terminal pragmatico y eficaz"
-        else:
-            contexto_sistema = contexto_raw.strip()
+        contexto_sistema = self._recortar_contexto(str(contexto_raw).strip(), max_chars=18000)
 
         url = f"{self.BASE_URL}/chat/completions"
 
         payload = {
             "model": str(modelo_activo),
             "messages": [
-                {"role": "system", "content": contexto_sistema},
+                {"role": "system", "content": contexto_sistema}, # Contexto ya saneado
                 {"role": "user", "content": str(prompt)}
             ],
             "temperature": 0.3,
