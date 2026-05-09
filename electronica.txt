@@ -1,6 +1,0 @@
-La electrónica es una rama de la física que se enfoca en el estudio de la electricidad y la electrónica. 
-
-* Los primeros dispositivos electrónicos fueron los tubos de rayos catódicos, que se utilizaron en la década de 1920 para crear imágenes en pantallas de televisión. 
-* Los transistores, inventados en la década de 1940, reemplazaron a los tubos de rayos catódicos y permitieron la creación de dispositivos electrónicos más pequeños y eficientes. 
-* Los circuitos integrados, desarrollados en la década de 1950, permitieron la integración de múltiples componentes electrónicos en un solo chip de silicio. 
-* Los microprocesadores, desarrollados en la década de 1970, permitieron la creación de computadoras personales y han revolucionado la forma en que se procesan y se almacenan los datos.
