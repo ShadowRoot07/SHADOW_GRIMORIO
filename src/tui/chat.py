@@ -12,17 +12,19 @@ from textual.app import ComposeResult
 from src.api.groq_client import oraculo
 
 SHADOW_CONSTRUCT_PROTOCOL = """
-### ARCHITECT_PROTOCOL_ACTIVE ###
-INSTRUCCIÓN: Actúa como un Ingeniero de Sistemas Senior. 
-FORMATO REQUERIDO: Debes responder ÚNICAMENTE con un bloque JSON válido para ArchitectCore.
-ESTRUCTURA JSON:
+### ARCHITECT_PROTOCOL_V2 ###
+1. RESPUESTA: Únicamente un objeto JSON.
+2. ESCAPE: Es CRÍTICO que uses doble escape en saltos de línea (\\n) y escapes en comillas internas (\\") dentro del campo 'code'.
+3. FORMATO:
 {
-  "project_name": "SHADOW_GRIMORIO",
   "actions": [
-    {"action": "create"|"update", "path": "ruta/al/archivo", "code": "contenido_del_codigo"}
+    {
+      "action": "create",
+      "path": "nombre_archivo.ext",
+      "code": "contenido_con_escapes_correctos"
+    }
   ]
 }
-PROHIBIDO: No incluyas explicaciones, saludos ni markdown fuera del bloque JSON.
 """
 
 class ChatScreen(Screen):

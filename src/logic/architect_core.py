@@ -10,62 +10,74 @@ class ArchitectCore:
         self.project_root = current_file.parents[2]
         logger.info(f"🏗️ Base del Grimorio: {self.project_root}")
 
+
     def _extraer_json(self, texto: str) -> str:
-        """Extrae el bloque JSON ignorando basura visual del TUI."""
+        """Extractor de alta resistencia para entornos móviles y Termux."""
         if not texto: return ""
         try:
-            # Busca desde el primer '{' hasta el último '}'
-            match = re.search(r'(\{.*\})', texto, re.DOTALL | re.MULTILINE)
+            # Eliminamos posibles caracteres de control que rompen el buffer
+            texto_limpio = "".join(char for char in texto if ord(char) >= 32 or char in "\n\r\t")
+            
+            # Buscamos el bloque JSON ignorando cualquier texto decorativo del TUI
+            match = re.search(r'(\{.*\})', texto_limpio, re.DOTALL | re.MULTILINE)
             if match:
                 candidato = match.group(1).strip()
-                # Limpieza de comas finales y caracteres de control
+                # Reparación de urgencia: comas finales antes de cerrar llaves/corchetes
                 candidato = re.sub(r',\s*([\]}])', r'\1', candidato)
-                return "".join(char for char in candidato if ord(char) >= 32 or char in "\n\r\t")
+                return candidato
         except Exception as e:
-            logger.error(f"Fallo en extracción: {e}")
+            logger.error(f"Fallo crítico en extracción: {e}")
         return ""
 
     def procesar_instruccion(self, raw_response: str, cwd_usuario: str = None):
-        """Punto de entrada único para la construcción."""
+        """Procesa y valida la intención de construcción del Oráculo."""
         json_puro = self._extraer_json(raw_response)
         if not json_puro:
             return {"status": "error", "message": "No se detectó estructura operativa JSON."}
 
         try:
-            # Limpiar comentarios y parsear
+            # Limpieza profunda de comentarios y saltos de línea literales
             json_saneado = re.sub(r'//.*?\n|/\*.*?\*/', '', json_puro, flags=re.S)
-            data = json.loads(json_saneado)
+            
+            # Intentar parseo estándar
+            try:
+                data = json.loads(json_saneado)
+            except json.JSONDecodeError:
+                # Si falla por caracteres de escape, intentamos una limpieza manual de escapes
+                # Esto ayuda con el error 'Expecting , delimiter'
+                json_saneado = json_saneado.replace('\n', '\\n').replace('\r', '\\r')
+                # Intentamos rescatar los componentes básicos si el JSON es demasiado complejo
+                logger.warning("Sintaxis JSON compleja detectada. Iniciando modo rescate.")
+                return self._intento_rescate_manual(json_puro)
+
             target_path = Path(cwd_usuario) if cwd_usuario else self.project_root
 
-            # --- LÓGICA DE COMPATIBILIDAD ---
-            # 1. Soporte para parches
+            # 1. Soporte para parches (Edición de archivos existentes)
             if "patches" in data:
                 return self.aplicar_parches(data["patches"], target_path)
 
-            # 2. Soporte para el protocolo "actions" (Spica)
+            # 2. Soporte para protocolo de creación/actualización
+            plano_final = {"files": [], "folders": data.get("folders", [])}
+            
             if "actions" in data:
-                # Mapeamos "actions" al formato interno "files"
-                plano_mapeado = {"files": []}
                 for act in data["actions"]:
                     if act.get("action") in ["create", "update"]:
-                        plano_mapeado["files"].append({
+                        plano_final["files"].append({
                             "path": act["path"],
-                            "content": act.get("code") or act.get("content")
+                            "content": act.get("code") or act.get("content", "")
                         })
-                return self.construir(plano_mapeado, target_path)
+            
+            if "files" in data:
+                plano_final["files"].extend(data["files"])
 
-            # 3. Soporte para formato nativo "files" / "folders"
-            if "folders" in data or "files" in data:
-                return self.construir(data, target_path)
+            if not plano_final["files"] and not plano_final["folders"]:
+                return {"status": "error", "message": "JSON válido pero sin instrucciones de construcción."}
 
-            return {"status": "error", "message": "🚨 JSON detectado pero sin instrucciones válidas (Faltan actions/files)."}
+            return self.construir(plano_final, target_path)
 
-        except json.JSONDecodeError as e:
-            logger.warning("⚠️ JSON Corrupto. Intentando rescate de emergencia...")
-            return self._intento_rescate_manual(json_puro)
         except Exception as e:
             logger.error(f"Fallo general en Architect: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"Error en procesamiento: {str(e)}"}
 
     def construir(self, plano: dict, target_path: Path):
         resumen = []
