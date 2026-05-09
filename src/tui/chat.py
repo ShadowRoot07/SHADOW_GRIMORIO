@@ -11,8 +11,6 @@ from textual.app import ComposeResult
 # Importamos el cliente de Groq existente
 from src.api.groq_client import oraculo
 
-<<<<<<< HEAD
-=======
 SHADOW_CONSTRUCT_PROTOCOL = """
 ### ARCHITECT_PROTOCOL_V2 ###
 1. RESPUESTA: Únicamente un objeto JSON.
@@ -29,7 +27,6 @@ SHADOW_CONSTRUCT_PROTOCOL = """
 }
 """
 
->>>>>>> final-fix-branch
 class ChatScreen(Screen):
     """El Oráculo: Inteligencia Operativa Conversacional con UX Mejorada."""
 
@@ -253,20 +250,6 @@ class ChatScreen(Screen):
             event.prevent_default()
 
     async def action_enviar_mensaje(self) -> None:
-<<<<<<< HEAD
-        """Flujo de salida de datos: Limpieza y envío."""
-        text = self.chat_input.text.strip()
-        if not text:
-            return
-
-        # Limpiar interfaz antes de procesar
-        self.chat_input.text = ""
-        self.chat_input.cursor_location = (0, 0)
-        self.query_one("#input_container").styles.height = 3
-        
-        # Iniciar consulta
-        await self.consultar_oraculo(text)
-=======
         """Flujo de salida de datos: Limpieza y envío con protocolo."""
         # Cambiamos 'text' por 'raw_text' para que coincida con la lógica de abajo
         raw_text = self.chat_input.text.strip() 
@@ -289,7 +272,6 @@ class ChatScreen(Screen):
 
         # 3. Enviar al oráculo (Asegúrate de que consultar_oraculo acepte display_text)
         await self.consultar_oraculo(query_final, display_text=raw_text)
->>>>>>> final-fix-branch
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
         """Efecto visual cuando el input está activo."""
@@ -330,11 +312,7 @@ class ChatScreen(Screen):
                 container.scroll_end(animate=False)
 
                 # Delay ultra-rápido para el ZTE en textos largos
-<<<<<<< HEAD
-                delay = 0.03 if len(texto) < 300 else 0.0005
-=======
                 delay = 0.003 if len(texto) < 300 else 0.00005
->>>>>>> final-fix-branch
                 await asyncio.sleep(delay)
 
             # --- TRASPASO AL LOG PRINCIPAL ---
@@ -350,47 +328,30 @@ class ChatScreen(Screen):
         # thread=False es vital aquí para que asyncio.sleep funcione
         self.run_worker(_animar(), thread=False, name="animador_oraculo")
 
-<<<<<<< HEAD
-    async def consultar_oraculo(self, query: str):
-=======
     async def consultar_oraculo(self, query: str, display_text: str = None):
         """
         Consulta al Oráculo enviando el prompt completo pero 
         mostrando opcionalmente un texto simplificado en el TUI.
         """
->>>>>>> final-fix-branch
         self.progress = self.query_one("#chat_progress")
         self.progress.styles.display = "block"
         self.progress.update(progress=10)
 
-<<<<<<< HEAD
-        self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {query}")
-
-        try:
-            # 1. Fase de pensamiento visual
-=======
         # Usamos el texto de visualización si existe, si no, la query original
         visual_text = display_text if display_text else query
         self.console.write(f"\n[bold cyan]ShadowRoot07:[/] {visual_text}")
 
         try:
             # Fase de pensamiento visual
->>>>>>> final-fix-branch
             for p in range(15, 46, 10):
                 self.progress.update(progress=p)
                 await asyncio.sleep(0.05)
 
-<<<<<<< HEAD
-            # 2. Llamada al Oráculo (Groq API)
-            respuesta = await oraculo.consultar(query, agente_id="SPICA")
-            
-=======
             # 2. Llamada al Oráculo (Groq API) - Aquí enviamos la query completa con el protocolo
             respuesta = await oraculo.consultar(query, agente_id="SPICA")
             
             # ... (el resto del código se mantiene igual)
  
->>>>>>> final-fix-branch
             # 3. Disparar la animación de tipeo (Asíncrona, sin hilos)
             self.tipear_respuesta(respuesta)
 
