@@ -286,46 +286,58 @@ class ChatScreen(Screen):
 
     def tipear_respuesta(self, texto: str) -> None:
         """
-        Animación optimizada para ShadowRoot:
-        Usa un worker asíncrono para no bloquear el loop principal.
+        Animación operativa con salto de saturación.
+        Si el texto es muy largo (>1000 chars), se imprime directo para no bloquear al usuario.
         """
+        # Umbral de saturación para el ZTE Blade (evitar esperas eternas)
+        UMBRAL_SALTO = 1000
+
         async def _animar():
             container = self.query_one("#typing_overlay")
             internal_static = self.query_one("#typing_buffer_internal")
 
+            # CASO A: El texto es demasiado largo, saltamos animación
+            if len(texto) > UMBRAL_SALTO:
+                self.console.write(f"[bold purple]Oráculo:[/] [dim](Respuesta larga, saltando animación...)[/]")
+                self.console.write(f"[bold purple]Oráculo:[/] {escape(texto)}")
+                self.progress.styles.display = "none"
+                self.console.scroll_end()
+                return
+
+            # CASO B: Animación normal para respuestas cortas/medias
             container.styles.display = "block"
             acumulado = ""
             internal_static.update("")
 
-            # Animación de tipeo
-            for i, letra in enumerate(texto):
-                acumulado += letra
-                renderizado = Text.assemble(
-                    ("Oráculo: ", "bold #BB00FF"),
-                    (acumulado, "#00FF00"),
-                    ("█", "bold white blink")
-                )
-                internal_static.update(renderizado)
-                
-                progreso = 50 + int((i / len(texto)) * 50)
-                self.progress.update(progress=progreso)
-                container.scroll_end(animate=False)
+            try:
+                for i, letra in enumerate(texto):
+                    acumulado += letra
+                    renderizado = Text.assemble(
+                        ("Oráculo: ", "bold #BB00FF"),
+                        (acumulado, "#00FF00"),
+                        ("█", "bold white blink")
+                    )
+                    internal_static.update(renderizado)
 
-                # Delay ultra-rápido para el ZTE en textos largos
-                delay = 0.003 if len(texto) < 300 else 0.00005
-                await asyncio.sleep(delay)
+                    progreso = 50 + int((i / len(texto)) * 50)
+                    self.progress.update(progress=progreso)
+                    container.scroll_end(animate=False)
 
-            # --- TRASPASO AL LOG PRINCIPAL ---
-            self.console.write(f"[bold purple]Oráculo:[/] {escape(texto)}")
+                    # Delay ultra-rápido para el ZTE
+                    delay = 0.002 if len(texto) < 300 else 0.00001
+                    await asyncio.sleep(delay)
 
+                # Al terminar la animación, traspasamos al log principal
+                self.console.write(f"[bold purple]Oráculo:[/] {escape(texto)}")
+            
+            finally:
+                # Limpieza de UI
+                internal_static.update("")
+                container.styles.display = "none"
+                self.progress.styles.display = "none"
+                self.console.scroll_end()
 
-            # Limpieza de UI
-            internal_static.update("")
-            container.styles.display = "none"
-            self.progress.styles.display = "none"
-            self.console.scroll_end()
-
-        # thread=False es vital aquí para que asyncio.sleep funcione
+        # thread=False es vital para que asyncio.sleep funcione en el loop de Textual
         self.run_worker(_animar(), thread=False, name="animador_oraculo")
 
     async def consultar_oraculo(self, query: str, display_text: str = None):
