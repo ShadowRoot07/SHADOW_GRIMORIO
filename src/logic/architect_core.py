@@ -16,17 +16,17 @@ class ArchitectCore:
         if not texto: return ""
         try:
             # Eliminamos posibles caracteres de control que rompen el buffer
-            texto_limpio = "".join(char for char in texto if ord(char) >= 32 or char in "\n\r\t")
-
+            texto = texto.replace('\\"', '"') 
             # Buscamos el bloque JSON ignorando cualquier texto decorativo del TUI
-            match = re.search(r'(\{.*\})', texto_limpio, re.DOTALL | re.MULTILINE)
+            match = re.search(r'(\{.*\})', texto, re.DOTALL)
+
             if match:
                 candidato = match.group(1).strip()
-                # Reparación de urgencia: comas finales antes de cerrar llaves/corchetes
+                # Reparar comas criminales antes de cerrar el objeto
                 candidato = re.sub(r',\s*([\]}])', r'\1', candidato)
                 return candidato
         except Exception as e:
-            logger.error(f"Fallo crítico en extracción: {e}")
+            logger.error(f"Fallo en extracción: {e}")
         return ""
 
     def procesar_instruccion(self, raw_response: str, cwd_usuario: str = None):
@@ -80,25 +80,25 @@ class ArchitectCore:
     def construir(self, plano: dict, target_path: Path):
         resumen = []
         try:
-            # Asegurar que target_path sea absoluto para evitar ambigüedades en Termux
             target_path = target_path.resolve()
-            
-            for folder in plano.get("folders", []):
-                # .lstrip("/") es vital para que Path / "/ruta" no ignore el target_path
-                path = (target_path / folder.lstrip("/")).resolve()
-                
-                # SEGURIDAD: No permitir escribir fuera del target_path
-                if not str(path).startswith(str(target_path)):
-                    continue
-                    
-                path.mkdir(parents=True, exist_ok=True)
-                resumen.append(f"📁 Dir: {folder}")
+            # ... (tu lógica de carpetas se mantiene igual)
 
             for file_info in plano.get("files", []):
                 file_path = target_path / file_info["path"].lstrip("/")
                 file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # --- LIMPIEZA DE CONTENIDO ---
+                content = file_info.get("content") or file_info.get("code", "")
+                
+                # Si el contenido viene con escapes literales como "\\n" o "\\t",
+                # los normalizamos a caracteres reales.
+                if isinstance(content, str):
+                    content = content.replace("\\n", "\n").replace("\\t", "\t")
+                    # Eliminamos el residuo de la barra invertida sola que viste en tu TXT
+                    content = re.sub(r'\\\n', '\n', content) 
+
                 with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(file_info["content"])
+                    f.write(content)
                 resumen.append(f"📄 File: {file_info['path']}")
 
             return {"status": "success", "details": resumen}

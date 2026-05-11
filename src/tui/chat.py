@@ -12,16 +12,17 @@ from textual.app import ComposeResult
 from src.api.groq_client import oraculo
 
 SHADOW_CONSTRUCT_PROTOCOL = """
-### ARCHITECT_PROTOCOL_V2 ###
-1. RESPUESTA: Únicamente un objeto JSON.
-2. ESCAPE: Es CRÍTICO que uses doble escape en saltos de línea (\\n) y escapes en comillas internas (\\") dentro del campo 'code'.
-3. FORMATO:
+### ARCHITECT_PROTOCOL_V3 ###
+1. FORMATO: Únicamente un objeto JSON puro. Sin texto extra.
+2. NORMAS: 
+   - Usa saltos de línea estándar (\\n) dentro de las strings.
+   - Asegúrate de que el código sea válido para escritura directa.
 {
   "actions": [
     {
       "action": "create",
-      "path": "nombre_archivo.ext",
-      "code": "contenido_con_escapes_correctos"
+      "path": "ruta/al/archivo.py",
+      "code": "print('hola')\\nprint('mundo')"
     }
   ]
 }
