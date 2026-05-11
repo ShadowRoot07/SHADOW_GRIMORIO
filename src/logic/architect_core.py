@@ -46,7 +46,7 @@ class ArchitectCore:
                 # Si falla por caracteres de escape, intentamos una limpieza manual de escapes
                 json_saneado = json_saneado.replace('\n', '\\n').replace('\r', '\\r')
                 logger.warning("Sintaxis JSON compleja detectada. Iniciando modo rescate.")
-                return self._intento_rescate_manual(json_puro)
+                return self._intento_rescate_manual(json_puro, cwd_usuario)
 
             target_path = Path(cwd_usuario) if cwd_usuario else self.project_root
 
@@ -80,8 +80,17 @@ class ArchitectCore:
     def construir(self, plano: dict, target_path: Path):
         resumen = []
         try:
+            # Asegurar que target_path sea absoluto para evitar ambigüedades en Termux
+            target_path = target_path.resolve()
+            
             for folder in plano.get("folders", []):
-                path = target_path / folder.lstrip("/")
+                # .lstrip("/") es vital para que Path / "/ruta" no ignore el target_path
+                path = (target_path / folder.lstrip("/")).resolve()
+                
+                # SEGURIDAD: No permitir escribir fuera del target_path
+                if not str(path).startswith(str(target_path)):
+                    continue
+                    
                 path.mkdir(parents=True, exist_ok=True)
                 resumen.append(f"📁 Dir: {folder}")
 
@@ -115,17 +124,25 @@ class ArchitectCore:
                 resumen.append(f"🔥 Error en {p['path']}: {e}")
         return {"status": "success", "details": resumen}
 
-    def _intento_rescate_manual(self, json_roto: str):
+    def _intento_rescate_manual(self, json_roto: str, cwd_usuario: str = None):
         resumen = []
+        # Usar el CWD proporcionado o caer en la raíz como último recurso
+        base_escritura = Path(cwd_usuario) if cwd_usuario else self.project_root
+        
         files_raw = re.findall(r'"path":\s*"(.*?)".*?"(?:code|content)":\s*"(.*?)"', json_roto, re.DOTALL)
         for path_str, content_str in files_raw:
             try:
-                file_path = self.project_root / path_str.lstrip("/")
+                # Sanitización: Evitar que la IA intente salir del directorio con ../
+                safe_path = path_str.lstrip("/")
+                file_path = base_escritura / safe_path
+                
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 clean_content = content_str.replace("\\n", "\n").replace('\\"', '"')
                 file_path.write_text(clean_content, encoding="utf-8")
-                resumen.append(f"📄 File (Rescatado): {path_str}")
-            except: continue
+                resumen.append(f"📄 File (Rescatado): {safe_path}")
+            except Exception as e: 
+                logger.error(f"Error en rescate de {path_str}: {e}")
+                continue
         return {"status": "success", "details": resumen} if resumen else {"status": "error", "message": "Rescate fallido."}
 
 architect = ArchitectCore()
